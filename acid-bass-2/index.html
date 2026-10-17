@@ -28,6 +28,7 @@
   .eg{display:flex;flex-direction:column;gap:3px;min-width:0}.eg .gt{font-size:9px;letter-spacing:.14em;color:var(--amber);text-transform:uppercase}
   .krow{display:flex;gap:4px;flex-wrap:wrap}
   canvas.envc{width:100%;height:36px;background:#0d0d11;border:1px solid #333;border-radius:3px;display:block}
+  #dMs{width:64px;padding:2px;font:11px Consolas,monospace;border:1px solid #555;border-radius:2px;background:#eee;color:#111;-webkit-user-select:text;user-select:text}
   .val{font:10px Consolas,monospace;color:#bcd;height:12px}
   button{font:inherit;cursor:pointer}
   .btn{background:linear-gradient(#f0f0f2,#c4c6cb);border:1px solid #6c6f76;border-radius:3px;padding:4px 8px;color:var(--ink);text-transform:uppercase;letter-spacing:.06em;font-size:10px}
@@ -63,6 +64,13 @@
   <div class="head"><b>ACID BASS LINE 2</b><span>computer controlled · up to 32 step</span></div>
 
   <div class="panel" id="knobs"></div>
+  <div class="panel hidden" id="fx">
+    <div class="eg"><div class="gt">Delay</div><div class="krow" id="fxK"></div></div>
+    <div class="eg"><div class="gt">Mode</div>
+      <div class="krow" style="align-items:center;gap:8px"><button class="btn" id="dPP" aria-pressed="true" title="repeats alternate left and right">Ping-pong</button><button class="btn" id="dFat" aria-pressed="false" title="darker, saturated, slowly wobbling repeats">Fat</button></div>
+      <label class="grp" style="margin-top:6px"><span class="t" style="color:#eee">time ms</span><input type="number" id="dMs" min="20" max="1000" step="1" aria-label="Delay time in milliseconds"></label>
+    </div>
+  </div>
   <div class="panel hidden" id="env">
     <div class="eg"><div class="gt">Filter envelope</div><div class="krow" id="envF"></div><canvas class="envc" id="cvF" aria-label="Filter envelope shape"></canvas></div>
     <div class="eg"><div class="gt">Amp envelope</div><div class="krow" id="envA"></div><canvas class="envc" id="cvA" aria-label="Amp envelope shape"></canvas></div>
@@ -73,6 +81,7 @@
     <div class="grp"><span class="t">wave</span><button class="btn" id="wSaw" aria-pressed="true">Saw</button><button class="btn" id="wSq" aria-pressed="false">Square</button></div>
     <div class="grp"><span class="t">swing</span><input type="range" id="swing" min="0" max="100" value="0" aria-label="Swing"></div>
     <button class="btn" id="envBtn" aria-pressed="false" title="show the filter and amp ADSR and the gate length">Envelope</button>
+    <button class="btn" id="fxBtn" aria-pressed="false" title="show the delay: time, feedback, mix, ping-pong, fat">Delay</button>
     <button class="btn" id="autoBtn" aria-pressed="false" title="show per-knob automation: min %, max %, ~ on/off, beats per sweep">Automate</button>
     <label class="grp"><input type="checkbox" id="sync"><span class="t" style="margin:0 0 0 3px">stop at pattern end</span></label>
   </div>
@@ -128,7 +137,10 @@ let sweep = 0, lastFreq = 110, timer = null;
 // ---- audio ----
 function ensureAudio() {
   if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
-  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  buildGraph(new (window.AudioContext || window.webkitAudioContext)());
+}
+function buildGraph(c) {
+  ctx = c;
   osc = ctx.createOscillator(); osc.type = S.wave === 'square' ? 'square' : 'sawtooth'; osc.frequency.value = 110;
   // Two cascaded lowpass biquads: 24 dB/oct, resonance only on the second so the peak is a single clean ridge.
   f1 = ctx.createBiquadFilter(); f1.type = 'lowpass'; f1.Q.value = 0.5; f1.frequency.value = T.cutoffHz(S.knobs.cutoff);
@@ -136,12 +148,55 @@ function ensureAudio() {
   vca = ctx.createGain(); vca.gain.value = 0;
   master = ctx.createGain(); master.gain.value = S.knobs.volume;
   // ponytail: tanh soft clip stands in for the 303's output stage; it also tames the resonance peak.
-  const sh = ctx.createWaveShaper(), c = new Float32Array(1024);
-  for (let i = 0; i < 1024; i++) c[i] = Math.tanh((i / 511.5 - 1) * 1.6);
-  sh.curve = c;
-  osc.connect(f1); f1.connect(f2); f2.connect(vca); vca.connect(master); master.connect(sh); sh.connect(ctx.destination);
+  const sh = ctx.createWaveShaper(), c2 = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++) c2[i] = Math.tanh((i / 511.5 - 1) * 1.6);
+  sh.curve = c2;
+  osc.connect(f1); f1.connect(f2); f2.connect(vca); vca.connect(master); master.connect(sh);
+  buildDelay(sh);
   osc.start();
 }
+// ---- delay: dry + a wet bus fed by either a ping-pong pair or a single (mono) line ----
+// Ping-pong: the input enters the left line, which feeds the right, which feeds the left again, so repeats alternate
+// sides every `time`. Mono: one line feeding itself, centred. Fat mode darkens (lowpass), saturates (tanh) and slowly
+// wobbles the time (a 0.7 Hz LFO, ~2 ms deep) on every repeat, and lifts the wet level a little, for thick, tape-like echoes.
+let dry, wet, dFx = null, fatCurve = null;
+function buildDelay(src) {
+  const mk = () => ctx.createDelay(2);
+  dry = ctx.createGain(); wet = ctx.createGain();
+  src.connect(dry); dry.connect(ctx.destination); wet.connect(ctx.destination);
+  const ppIn = ctx.createGain(), moIn = ctx.createGain();
+  src.connect(ppIn); src.connect(moIn);
+  const dL = mk(), dR = mk(), dM = mk(), loops = [];
+  const hop = (from, to) => {
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 20000;
+    const sat = ctx.createWaveShaper(), g = ctx.createGain();
+    from.connect(lp); lp.connect(sat); sat.connect(g); g.connect(to); loops.push({ lp, sat, g });
+  };
+  ppIn.connect(dL); hop(dL, dR); hop(dR, dL);
+  const pl = ctx.createStereoPanner(), pr = ctx.createStereoPanner(); pl.pan.value = -1; pr.pan.value = 1;
+  dL.connect(pl); dR.connect(pr); pl.connect(wet); pr.connect(wet);
+  moIn.connect(dM); hop(dM, dM); dM.connect(wet);
+  const lfo = ctx.createOscillator(), lfoG = ctx.createGain(); lfo.frequency.value = 0.7; lfoG.gain.value = 0;
+  lfo.connect(lfoG); for (const d of [dL, dR, dM]) lfoG.connect(d.delayTime);
+  lfo.start();
+  // Unity slope near zero: the curve squashes peaks and adds harmonics but never adds gain, so repeats still die away.
+  if (!fatCurve) { fatCurve = new Float32Array(1024); for (let k = 0; k < 1024; k++) fatCurve[k] = Math.tanh((k / 511.5 - 1) * 2.2) / 2.2; }
+  dFx = { ppIn, moIn, dL, dR, dM, loops, lfoG, fat: null };
+  applyDelay(true);
+}
+// snap = true sets values outright (graph build, offline checks); otherwise they glide, so a twist never clicks.
+function applyDelay(snap) {
+  if (!dFx) return;
+  const now = ctx.currentTime, set = (p, v) => (snap ? (p.value = v) : p.setTargetAtTime(v, now, 0.03));
+  const sec = T.delayMs(val('dtime')) / 1000, fb = T.delayFb(val('dfb')), mix = val('dmix'), fat = S.delay.fat;
+  for (const d of [dFx.dL, dFx.dR, dFx.dM]) set(d.delayTime, sec);
+  set(dFx.ppIn.gain, S.delay.pp ? 1 : 0); set(dFx.moIn.gain, S.delay.pp ? 0 : 1);
+  for (const l of dFx.loops) { set(l.g.gain, fb); set(l.lp.frequency, fat ? 2600 : 20000); }
+  if (dFx.fat !== fat) { for (const l of dFx.loops) l.sat.curve = fat ? fatCurve : null; dFx.fat = fat; }
+  set(dFx.lfoG.gain, fat ? 0.002 : 0);
+  set(dry.gain, Math.cos(mix * Math.PI / 2)); set(wet.gain, Math.sin(mix * Math.PI / 2) * (fat ? 1.25 : 1));   // equal-power crossfade
+}
+function paintDelay() { flag('dPP', S.delay.pp); flag('dFat', S.delay.fat); applyDelay(); }
 // A knob's live value: its manual position, or the automation sine when that is on. The sine's clock is the
 // tempo KNOB's manual value, so automating tempo never feeds back into its own LFO.
 const beatsAt = (t) => t * T.bpmOf(S.knobs.tempo) / 60;
@@ -290,6 +345,9 @@ const KNOBDEF = [
   ['asus', 'Sustain', pc, 'envA'],
   ['arel', 'Release', (v) => ms(T.relSec(v)), 'envA'],
   ['gate', 'Gate length', (v) => pc(T.gateFrac(v)), 'envG'],
+  ['dtime', 'Time', (v) => Math.round(T.delayMs(v)) + 'ms', 'fxK'],
+  ['dfb', 'Feedback', (v) => pc(T.delayFb(v)), 'fxK'],
+  ['dmix', 'Mix', pc, 'fxK'],
 ];
 const knobUI = {};
 function setKnob(key, v) {
@@ -300,6 +358,7 @@ function setKnob(key, v) {
   if (key === 'res') f2.Q.setTargetAtTime(T.resQ(v), now, 0.02);
   if (key === 'volume') master.gain.setTargetAtTime(v, now, 0.02);
   if (key === 'cutoff') applyCutoff();
+  if (key === 'dtime' || key === 'dfb' || key === 'dmix') applyDelay();
 }
 // The envelope decays toward the cutoff knob, so a held note or a running line follows a twist at once. It
 // does flatten the tail of a decay already under way; each new note restarts from the new base anyway.
@@ -314,6 +373,7 @@ function paintKnob(key) {
   ui.el.setAttribute('aria-valuenow', Math.round(v * 100)); ui.el.setAttribute('aria-valuetext', def[2](v));
   ui.val.textContent = def[2](v);
   if (/^[fa](atk|dec|sus|rel)$/.test(key)) drawEnvs();
+  if (key === 'dtime' && document.activeElement !== $('dMs')) $('dMs').value = Math.round(T.delayMs(v));
 }
 // The two envelope shapes, drawn from the live values: attack up, decay to the sustain level, a held stretch, release.
 function drawEnv(cv, pre) {
@@ -424,8 +484,13 @@ setInterval(() => {
   if (S.auto.res.on) f2.Q.setTargetAtTime(T.resQ(val('res')), now, 0.02);
   if (S.auto.volume.on) master.gain.setTargetAtTime(val('volume'), now, 0.02);
   if (S.auto.cutoff.on) applyCutoff();
+  if (S.auto.dtime.on || S.auto.dfb.on || S.auto.dmix.on) applyDelay();
 }, 33);
 $('autoBtn').onclick = () => { const on = !$('case').classList.contains('showauto'); $('case').classList.toggle('showauto', on); flag('autoBtn', on); };
+$('fxBtn').onclick = () => { const on = $('fx').classList.contains('hidden'); $('fx').classList.toggle('hidden', !on); flag('fxBtn', on); };
+$('dPP').onclick = () => { ensureAudio(); S.delay.pp = !S.delay.pp; paintDelay(); save(); };
+$('dFat').onclick = () => { ensureAudio(); S.delay.fat = !S.delay.fat; paintDelay(); save(); };
+$('dMs').onchange = () => setKnob('dtime', T.msToKnob($('dMs').value));
 $('envBtn').onclick = () => { const on = $('env').classList.contains('hidden'); $('env').classList.toggle('hidden', !on); flag('envBtn', on); if (on) drawEnvs(); };
 
 // ---- pattern select, length, transport extras ----
@@ -479,6 +544,7 @@ function adopt(raw) {
   try { S = T.cleanState(raw ? JSON.parse(raw) : null); } catch (_) { S = T.newState(); }
   setWave(S.wave); $('swing').value = Math.round(S.swing * 100);
   for (const k of Object.keys(knobUI)) knobUI[k].sync();
+  paintDelay();
   if (ctx) { master.gain.value = S.knobs.volume; f2.Q.value = T.resQ(S.knobs.res); }
   cursor = 0; paintSteps();
 }

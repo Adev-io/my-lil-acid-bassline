@@ -135,7 +135,7 @@ test('automation sweeps min -> max -> min over `rate` beats and cleans hostile i
   const c = T.cleanState({ auto: { cutoff: { on: 'yes', min: -5, max: 9, rate: 0 }, res: 'x' } }).auto;
   assert.deepEqual(plain(c.cutoff), { on: false, min: 0, max: 1, rate: 0.25 });
   assert.deepEqual(plain(c.res), { on: false, min: 0, max: 1, rate: 4 });
-  assert.equal(Object.keys(c).length, 16, 'every knob has an automation slot');
+  assert.equal(Object.keys(c).length, Object.keys(T.newState().knobs).length, 'every knob has an automation slot');
 });
 
 test('knob maps stay in range and are monotonic; tempo and tuning hit the stated ends', () => {
@@ -279,4 +279,18 @@ test('gate length shapes the MIDI notes; ties keep their own length', () => {
   const st = T.newState(); st.knobs.gate = 1; st.patterns[0] = T.parsePattern('C - - -');
   const mid = T.exportFiles(st).find((f) => f.name === 'I-A1.mid').data;
   assert.equal(readMidi(mid).notes.find((n) => n.kind === 'off').tick, 120, 'exportFiles passes the gate knob through');
+});
+
+test('delay maps: time is 20 ms..1000 ms and round-trips through the ms box; feedback stays under unity; flags clean', () => {
+  assert.ok(Math.abs(T.delayMs(0) - 20) < 1e-9 && Math.abs(T.delayMs(1) - 1000) < 1e-6);
+  for (const ms of [20, 75, 140, 333, 1000]) assert.ok(Math.abs(T.delayMs(T.msToKnob(ms)) - ms) < 1e-6, ms + ' ms');
+  assert.equal(T.msToKnob(5), 0, 'below range clamps to the shortest time');
+  assert.equal(T.msToKnob(99999), 1);
+  assert.ok(T.delayFb(1) < 1 && T.delayFb(0) === 0);
+  const d = T.newState();
+  assert.equal(d.knobs.dmix, 0, 'delay starts bypassed');
+  assert.deepEqual(plain(d.delay), { pp: true, fat: false });
+  assert.deepEqual(plain(T.cleanState({ delay: { pp: 'no', fat: 1 } }).delay), { pp: true, fat: false }, 'only a real boolean flips fat on');
+  assert.deepEqual(plain(T.cleanState({ delay: { pp: false, fat: true } }).delay), { pp: false, fat: true });
+  assert.deepEqual(plain(T.cleanState({ delay: 'x' }).delay), { pp: true, fat: false });
 });

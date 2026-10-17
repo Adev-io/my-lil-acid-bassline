@@ -4,7 +4,7 @@ Browser instruments and tools by [A_Development](https://github.com/Adev-io). Ea
 
 | Plugin | What it is |
 |---|---|
-| [`acid-bass-2/`](acid-bass-2/) | **Acid Bass Line 2**: the 303-style bass synth plus separate filter and amp **ADSR**, a gate-length knob and a live envelope view |
+| [`acid-bass-2/`](acid-bass-2/) | **Acid Bass Line 2**: the 303-style bass synth plus separate filter and amp **ADSR**, a gate-length knob, a live envelope view and a **ping-pong delay** |
 | [`tb303/`](tb303/) | **Acid Bass Line** (v1): the original 303-style synth, one decay envelope |
 
 ## Use it
@@ -21,6 +21,13 @@ Everything in v1 (below), plus an **Envelope** panel:
 - **Gate length:** how much of each step the note is held, 10-100% (55% matches the original 303). It also sets the note lengths in the exported MIDI.
 - **Live view:** both envelope shapes are drawn from the current knob values.
 - **Automate** reaches every envelope knob too. Defaults reproduce v1's sound, so nothing changes until you touch them. Accent still shortens the filter decay.
+
+**Delay** (press **Delay**):
+
+- **Time** in milliseconds (20-1000, a knob or type the exact value in the ms box), **Feedback** (how many repeats), **Mix** (dry to wet; 0 is fully bypassed, which is the default).
+- **Ping-pong** makes repeats alternate left and right every Time; off, the repeats stay centred.
+- **Fat** darkens each repeat, saturates it and wobbles the time slightly, for thick, tape-like echoes. The saturation never adds gain, so repeats still die away even at maximum feedback.
+- All three knobs are automatable, so you can sweep the delay time or ride the mix.
 
 State is stored under its own key, so v1 and v2 never overwrite each other's patterns.
 

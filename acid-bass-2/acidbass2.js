@@ -16,6 +16,7 @@
     tuning: 0.5, cutoff: 0.45, res: 0.5, envmod: 0.6, accent: 0.6, volume: 0.7, tempo: 0.45, gate: 0.5,
     fatk: 0, fdec: 0.64, fsus: 0, frel: 0.68,
     aatk: 0, adec: 0.5, asus: 1, arel: 0.03,
+    dtime: 0.5, dfb: 0.45, dmix: 0,   // delay: mix 0 is bypassed, so a fresh machine sounds as before
   };
 
   const num = (v, lo, hi, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
@@ -58,6 +59,7 @@
       knobs,
       auto,
       wave: r.wave === 'square' ? 'square' : 'saw',
+      delay: { pp: (r.delay || {}).pp !== false, fat: (r.delay || {}).fat === true },
       cur: int(r.cur, 0, SLOTS - 1, 0),
       song,
       swing: num(r.swing, 0, 1, 0),
@@ -81,6 +83,11 @@
   const decSec = (k) => 0.03 * Math.pow(83, num(k, 0, 1, 0.5));
   const relSec = (k) => 0.005 * Math.pow(400, num(k, 0, 1, 0.03));
   // How much of a step the gate is held: 10%..100%. The knob's centre (0.5) is the 303's 55%.
+  // Delay time is exponential, 20 ms..1000 ms, so the short slap-back range gets as much knob as the long echoes; the
+  // feedback knob tops out at 0.9, which stays under unity even before the lowpass in each repeat takes its share.
+  const delayMs = (k) => 20 * Math.pow(50, num(k, 0, 1, 0.5));
+  const msToKnob = (ms) => Math.min(1, Math.max(0, Math.log(num(ms, 20, 1000, 141) / 20) / Math.log(50)));
+  const delayFb = (k) => 0.9 * num(k, 0, 1, 0.45);
   const gateFrac = (k) => 0.1 + 0.9 * num(k, 0, 1, 0.5);
   const stepSeconds = (bpm) => 60 / bpm / 4;
 
@@ -219,7 +226,7 @@
   function exportFiles(raw) {
     const S = cleanState(raw);
     const bpm = bpmOf(S.knobs.tempo);
-    const sound = Object.entries(S.knobs).map(([k, v]) => k + ' ' + pct(v)).join('  ') + '  wave ' + S.wave;
+    const sound = Object.entries(S.knobs).map(([k, v]) => k + ' ' + pct(v)).join('  ') + '  wave ' + S.wave + '  delay ' + (S.delay.pp ? 'ping-pong' : 'mono') + (S.delay.fat ? ' fat' : '');
     const legend = "# notation: C..B note, C' high C, ^ _ octave up/down, * accent, ~ slide, - rest, = tie";
     const files = [];
     S.patterns.forEach((p, i) => {
@@ -260,6 +267,6 @@
 
   window.TB303 = {
     NAMES, GATES, SLOTS, STEPS, KNOBS, emptyPattern, cleanPattern, cleanState, newState, midiOf, freqOf, tuneCents, bpmOf,
-    cutoffHz, resQ, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, zip, crc32,
+    cutoffHz, resQ, delayMs, msToKnob, delayFb, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, zip, crc32,
   };
 })();
