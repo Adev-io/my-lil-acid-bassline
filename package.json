@@ -1,0 +1,9 @@
+{
+  "name": "a-development-plugins",
+  "version": "0.1.0",
+  "description": "Browser instruments and tools by A_Development. One page each, no build, no dependencies.",
+  "license": "MIT",
+  "author": "Ari Klopfer / A_Development",
+  "private": false,
+  "scripts": { "test": "node --test tb303/" }
+}
