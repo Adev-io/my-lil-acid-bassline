@@ -59,7 +59,7 @@
       knobs,
       auto,
       wave: r.wave === 'square' ? 'square' : 'saw',
-      delay: { pp: (r.delay || {}).pp !== false, fat: (r.delay || {}).fat === true },
+      delay: { pp: (r.delay || {}).pp !== false, fat: (r.delay || {}).fat === true, sync: (r.delay || {}).sync === true },
       cur: int(r.cur, 0, SLOTS - 1, 0),
       song,
       swing: num(r.swing, 0, 1, 0),
@@ -87,6 +87,21 @@
   // feedback knob tops out at 0.9, which stays under unity even before the lowpass in each repeat takes its share.
   const delayMs = (k) => 20 * Math.pow(50, num(k, 0, 1, 0.5));
   const msToKnob = (ms) => Math.min(1, Math.max(0, Math.log(num(ms, 20, 1000, 141) / 20) / Math.log(50)));
+  // Tempo sync: the Time knob steps through note divisions instead of milliseconds. Beats are quarter notes; T = triplet, . = dotted.
+  const DIVS = [
+    { name: '1/32', beats: 0.125 }, { name: '1/16T', beats: 1 / 6 }, { name: '1/16', beats: 0.25 }, { name: '1/8T', beats: 1 / 3 },
+    { name: '1/16.', beats: 0.375 }, { name: '1/8', beats: 0.5 }, { name: '1/4T', beats: 2 / 3 }, { name: '1/8.', beats: 0.75 },
+    { name: '1/4', beats: 1 }, { name: '1/2T', beats: 4 / 3 }, { name: '1/4.', beats: 1.5 }, { name: '1/2', beats: 2 },
+  ];
+  const divIndex = (k) => Math.round(num(k, 0, 1, 0.5) * (DIVS.length - 1));
+  const syncDiv = (k) => DIVS[divIndex(k)];
+  const syncSec = (k, bpm) => syncDiv(k).beats * 60 / bpm;
+  // The knob position whose division is closest to `sec` at this tempo, so flipping Sync keeps the echo where it was.
+  const knobOfSec = (sec, bpm) => {
+    let best = 0;
+    DIVS.forEach((d, i) => { if (Math.abs(d.beats * 60 / bpm - sec) < Math.abs(DIVS[best].beats * 60 / bpm - sec)) best = i; });
+    return best / (DIVS.length - 1);
+  };
   const delayFb = (k) => 0.9 * num(k, 0, 1, 0.45);
   const gateFrac = (k) => 0.1 + 0.9 * num(k, 0, 1, 0.5);
   const stepSeconds = (bpm) => 60 / bpm / 4;
@@ -226,7 +241,7 @@
   function exportFiles(raw) {
     const S = cleanState(raw);
     const bpm = bpmOf(S.knobs.tempo);
-    const sound = Object.entries(S.knobs).map(([k, v]) => k + ' ' + pct(v)).join('  ') + '  wave ' + S.wave + '  delay ' + (S.delay.pp ? 'ping-pong' : 'mono') + (S.delay.fat ? ' fat' : '');
+    const sound = Object.entries(S.knobs).map(([k, v]) => k + ' ' + pct(v)).join('  ') + '  wave ' + S.wave + '  delay ' + (S.delay.pp ? 'ping-pong' : 'mono') + (S.delay.fat ? ' fat' : '') + (S.delay.sync ? ' sync ' + syncDiv(S.knobs.dtime).name : '');
     const legend = "# notation: C..B note, C' high C, ^ _ octave up/down, * accent, ~ slide, - rest, = tie";
     const files = [];
     S.patterns.forEach((p, i) => {
@@ -267,6 +282,6 @@
 
   window.TB303 = {
     NAMES, GATES, SLOTS, STEPS, KNOBS, emptyPattern, cleanPattern, cleanState, newState, midiOf, freqOf, tuneCents, bpmOf,
-    cutoffHz, resQ, delayMs, msToKnob, delayFb, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, zip, crc32,
+    cutoffHz, resQ, delayMs, msToKnob, delayFb, DIVS, syncDiv, syncSec, knobOfSec, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, zip, crc32,
   };
 })();

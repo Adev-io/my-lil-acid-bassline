@@ -67,8 +67,8 @@
   <div class="panel hidden" id="fx">
     <div class="eg"><div class="gt">Delay</div><div class="krow" id="fxK"></div></div>
     <div class="eg"><div class="gt">Mode</div>
-      <div class="krow" style="align-items:center;gap:8px"><button class="btn" id="dPP" aria-pressed="true" title="repeats alternate left and right">Ping-pong</button><button class="btn" id="dFat" aria-pressed="false" title="darker, saturated, slowly wobbling repeats">Fat</button></div>
-      <label class="grp" style="margin-top:6px"><span class="t" style="color:#eee">time ms</span><input type="number" id="dMs" min="20" max="1000" step="1" aria-label="Delay time in milliseconds"></label>
+      <div class="krow" style="align-items:center;gap:8px"><button class="btn" id="dPP" aria-pressed="true" title="repeats alternate left and right">Ping-pong</button><button class="btn" id="dFat" aria-pressed="false" title="darker, saturated, slowly wobbling repeats">Fat</button><button class="btn" id="dSync" aria-pressed="false" title="Time snaps to note divisions of the tempo (1/16, 1/8., 1/4T ...)">Sync</button></div>
+      <label class="grp" style="margin-top:6px"><span class="t" style="color:#eee" title="the delay time in ms; follows the tempo when Sync is on">time ms</span><input type="number" id="dMs" min="20" max="1000" step="1" aria-label="Delay time in milliseconds"></label>
     </div>
   </div>
   <div class="panel hidden" id="env">
@@ -161,7 +161,7 @@ function buildGraph(c) {
 // wobbles the time (a 0.7 Hz LFO, ~2 ms deep) on every repeat, and lifts the wet level a little, for thick, tape-like echoes.
 let dry, wet, dFx = null, fatCurve = null;
 function buildDelay(src) {
-  const mk = () => ctx.createDelay(2);
+  const mk = () => ctx.createDelay(4);   // 4 s: a half note at the slowest tempo (40 bpm) is 3 s
   dry = ctx.createGain(); wet = ctx.createGain();
   src.connect(dry); dry.connect(ctx.destination); wet.connect(ctx.destination);
   const ppIn = ctx.createGain(), moIn = ctx.createGain();
@@ -185,10 +185,12 @@ function buildDelay(src) {
   applyDelay(true);
 }
 // snap = true sets values outright (graph build, offline checks); otherwise they glide, so a twist never clicks.
+// The delay time in seconds right now: the ms knob, or the chosen note division at the current tempo.
+const delaySec = () => (S.delay.sync ? T.syncSec(val('dtime'), T.bpmOf(val('tempo'))) : T.delayMs(val('dtime')) / 1000);
 function applyDelay(snap) {
   if (!dFx) return;
   const now = ctx.currentTime, set = (p, v) => (snap ? (p.value = v) : p.setTargetAtTime(v, now, 0.03));
-  const sec = T.delayMs(val('dtime')) / 1000, fb = T.delayFb(val('dfb')), mix = val('dmix'), fat = S.delay.fat;
+  const sec = delaySec(), fb = T.delayFb(val('dfb')), mix = val('dmix'), fat = S.delay.fat;
   for (const d of [dFx.dL, dFx.dR, dFx.dM]) set(d.delayTime, sec);
   set(dFx.ppIn.gain, S.delay.pp ? 1 : 0); set(dFx.moIn.gain, S.delay.pp ? 0 : 1);
   for (const l of dFx.loops) { set(l.g.gain, fb); set(l.lp.frequency, fat ? 2600 : 20000); }
@@ -196,7 +198,7 @@ function applyDelay(snap) {
   set(dFx.lfoG.gain, fat ? 0.002 : 0);
   set(dry.gain, Math.cos(mix * Math.PI / 2)); set(wet.gain, Math.sin(mix * Math.PI / 2) * (fat ? 1.25 : 1));   // equal-power crossfade
 }
-function paintDelay() { flag('dPP', S.delay.pp); flag('dFat', S.delay.fat); applyDelay(); }
+function paintDelay() { flag('dPP', S.delay.pp); flag('dFat', S.delay.fat); flag('dSync', S.delay.sync); $('dMs').disabled = S.delay.sync; if (knobUI.dtime) paintKnob('dtime'); applyDelay(); }
 // A knob's live value: its manual position, or the automation sine when that is on. The sine's clock is the
 // tempo KNOB's manual value, so automating tempo never feeds back into its own LFO.
 const beatsAt = (t) => t * T.bpmOf(S.knobs.tempo) / 60;
@@ -345,7 +347,7 @@ const KNOBDEF = [
   ['asus', 'Sustain', pc, 'envA'],
   ['arel', 'Release', (v) => ms(T.relSec(v)), 'envA'],
   ['gate', 'Gate length', (v) => pc(T.gateFrac(v)), 'envG'],
-  ['dtime', 'Time', (v) => Math.round(T.delayMs(v)) + 'ms', 'fxK'],
+  ['dtime', 'Time', (v) => (S.delay.sync ? T.syncDiv(v).name : Math.round(T.delayMs(v)) + 'ms'), 'fxK'],
   ['dfb', 'Feedback', (v) => pc(T.delayFb(v)), 'fxK'],
   ['dmix', 'Mix', pc, 'fxK'],
 ];
@@ -359,6 +361,7 @@ function setKnob(key, v) {
   if (key === 'volume') master.gain.setTargetAtTime(v, now, 0.02);
   if (key === 'cutoff') applyCutoff();
   if (key === 'dtime' || key === 'dfb' || key === 'dmix') applyDelay();
+  if (key === 'tempo' && S.delay.sync) { applyDelay(); paintKnob('dtime'); }   // a synced echo follows the tempo knob
 }
 // The envelope decays toward the cutoff knob, so a held note or a running line follows a twist at once. It
 // does flatten the tail of a decay already under way; each new note restarts from the new base anyway.
@@ -373,7 +376,7 @@ function paintKnob(key) {
   ui.el.setAttribute('aria-valuenow', Math.round(v * 100)); ui.el.setAttribute('aria-valuetext', def[2](v));
   ui.val.textContent = def[2](v);
   if (/^[fa](atk|dec|sus|rel)$/.test(key)) drawEnvs();
-  if (key === 'dtime' && document.activeElement !== $('dMs')) $('dMs').value = Math.round(T.delayMs(v));
+  if (key === 'dtime' && document.activeElement !== $('dMs')) $('dMs').value = Math.round(delaySec() * 1000);
 }
 // The two envelope shapes, drawn from the live values: attack up, decay to the sustain level, a held stretch, release.
 function drawEnv(cv, pre) {
@@ -484,12 +487,21 @@ setInterval(() => {
   if (S.auto.res.on) f2.Q.setTargetAtTime(T.resQ(val('res')), now, 0.02);
   if (S.auto.volume.on) master.gain.setTargetAtTime(val('volume'), now, 0.02);
   if (S.auto.cutoff.on) applyCutoff();
-  if (S.auto.dtime.on || S.auto.dfb.on || S.auto.dmix.on) applyDelay();
+  if (S.auto.dtime.on || S.auto.dfb.on || S.auto.dmix.on || (S.delay.sync && S.auto.tempo.on)) applyDelay();
+  if (S.delay.sync && S.auto.tempo.on && !S.auto.dtime.on) paintKnob('dtime');
 }, 33);
 $('autoBtn').onclick = () => { const on = !$('case').classList.contains('showauto'); $('case').classList.toggle('showauto', on); flag('autoBtn', on); };
 $('fxBtn').onclick = () => { const on = $('fx').classList.contains('hidden'); $('fx').classList.toggle('hidden', !on); flag('fxBtn', on); };
 $('dPP').onclick = () => { ensureAudio(); S.delay.pp = !S.delay.pp; paintDelay(); save(); };
 $('dFat').onclick = () => { ensureAudio(); S.delay.fat = !S.delay.fat; paintDelay(); save(); };
+$('dSync').onclick = () => {
+  ensureAudio();
+  const sec = delaySec(), bpm = T.bpmOf(val('tempo'));
+  S.delay.sync = !S.delay.sync;
+  // Keep the echo where it is: land on the nearest division, or on the exact ms the division was giving.
+  S.knobs.dtime = S.delay.sync ? T.knobOfSec(sec, bpm) : T.msToKnob(sec * 1000);
+  paintDelay(); save();
+};
 $('dMs').onchange = () => setKnob('dtime', T.msToKnob($('dMs').value));
 $('envBtn').onclick = () => { const on = $('env').classList.contains('hidden'); $('env').classList.toggle('hidden', !on); flag('envBtn', on); if (on) drawEnvs(); };
 

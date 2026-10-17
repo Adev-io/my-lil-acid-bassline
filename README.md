@@ -25,6 +25,7 @@ Everything in v1 (below), plus an **Envelope** panel:
 **Delay** (press **Delay**):
 
 - **Time** in milliseconds (20-1000, a knob or type the exact value in the ms box), **Feedback** (how many repeats), **Mix** (dry to wet; 0 is fully bypassed, which is the default).
+- **Sync** snaps Time to note divisions of the tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/2T, 1/4., 1/2 (T = triplet, . = dotted). The echo follows the Tempo knob, automated or not, and flipping Sync keeps the echo where it was.
 - **Ping-pong** makes repeats alternate left and right every Time; off, the repeats stay centred.
 - **Fat** darkens each repeat, saturates it and wobbles the time slightly, for thick, tape-like echoes. The saturation never adds gain, so repeats still die away even at maximum feedback.
 - All three knobs are automatable, so you can sweep the delay time or ride the mix.

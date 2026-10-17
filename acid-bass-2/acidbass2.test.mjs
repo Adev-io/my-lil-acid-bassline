@@ -289,8 +289,27 @@ test('delay maps: time is 20 ms..1000 ms and round-trips through the ms box; fee
   assert.ok(T.delayFb(1) < 1 && T.delayFb(0) === 0);
   const d = T.newState();
   assert.equal(d.knobs.dmix, 0, 'delay starts bypassed');
-  assert.deepEqual(plain(d.delay), { pp: true, fat: false });
-  assert.deepEqual(plain(T.cleanState({ delay: { pp: 'no', fat: 1 } }).delay), { pp: true, fat: false }, 'only a real boolean flips fat on');
-  assert.deepEqual(plain(T.cleanState({ delay: { pp: false, fat: true } }).delay), { pp: false, fat: true });
-  assert.deepEqual(plain(T.cleanState({ delay: 'x' }).delay), { pp: true, fat: false });
+  assert.deepEqual(plain(d.delay), { pp: true, fat: false, sync: false });
+  assert.deepEqual(plain(T.cleanState({ delay: { pp: 'no', fat: 1 } }).delay), { pp: true, fat: false, sync: false }, 'only a real boolean flips fat on');
+  assert.deepEqual(plain(T.cleanState({ delay: { pp: false, fat: true } }).delay), { pp: false, fat: true, sync: false });
+  assert.deepEqual(plain(T.cleanState({ delay: 'x' }).delay), { pp: true, fat: false, sync: false });
+});
+
+test('tempo sync: the Time knob steps through note divisions and the seconds follow the bpm', () => {
+  assert.equal(T.DIVS.length, 12);
+  assert.ok(T.DIVS.every((d, i) => i === 0 || d.beats > T.DIVS[i - 1].beats), 'divisions ascend');
+  assert.equal(T.syncDiv(0).name, '1/32');
+  assert.equal(T.syncDiv(1).name, '1/2');
+  assert.equal(T.syncDiv(0.5 + 1e-9).name, T.syncDiv(0.5).name);
+  const near = (x, y) => assert.ok(Math.abs(x - y) < 1e-9, x + ' vs ' + y);
+  near(T.syncSec(8 / 11, 120), 0.5);      // 1/4 at 120 bpm is half a second
+  near(T.syncSec(8 / 11, 60), 1);
+  near(T.syncSec(5 / 11, 120), 0.25);     // 1/8
+  near(T.syncSec(1, 40), 3);              // the longest: a half note at the slowest tempo, inside the 4 s delay line
+  assert.equal(T.syncDiv(T.knobOfSec(0.5, 120)).name, '1/4', 'nearest division to half a second at 120 bpm');
+  assert.equal(T.syncDiv(T.knobOfSec(0.19, 120)).name, '1/16.', '0.19 s at 120 bpm is closest to a dotted 1/16 (0.1875 s)');
+  for (const ms of [20, 90, 333, 1000]) for (const bpm of [40, 134, 300]) assert.ok(T.syncSec(T.knobOfSec(ms / 1000, bpm), bpm) > 0);
+  assert.equal(T.cleanState({ delay: { sync: 'yes' } }).delay.sync, false, 'only a real boolean turns sync on');
+  assert.equal(T.cleanState({ delay: { sync: true } }).delay.sync, true);
+  assert.equal(T.newState().delay.sync, false, 'sync is off by default, so ms keeps working as before');
 });
