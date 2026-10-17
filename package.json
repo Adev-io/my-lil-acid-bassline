@@ -1,7 +1,7 @@
 {
-  "name": "a-development-plugins",
+  "name": "my-lil-acid-bass",
   "version": "0.1.0",
-  "description": "Browser instruments and tools by A_Development. One page each, no build, no dependencies.",
+  "description": "A 303-style acid bass synth and 32-step sequencer in your browser, with a VST3 for FL Studio in progress.",
   "license": "MIT",
   "author": "Ari Klopfer / A_Development",
   "private": false,

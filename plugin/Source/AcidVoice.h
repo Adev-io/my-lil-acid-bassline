@@ -1,6 +1,6 @@
 // AcidVoice.h — the mono acid voice: PolyBLEP saw/square into two cascaded 12 dB lowpasses (24 dB/oct, resonance on the
 // second), a decaying filter envelope, an accent, and a legato glide. It is the C++ twin of the web page's `play()` in
-// acid-bass-2/index.html and uses the same constants, so the two sound alike.
+// index.html (the web app) and uses the same constants, so the two sound alike.
 // Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see plugin/LICENSE)
 #pragma once
 #include <juce_dsp/juce_dsp.h>

@@ -1,4 +1,4 @@
-// acid-bass-2/acidbass2.test.mjs — the acid bass line's pure core (sequencer rules, cleaning, automation, files), run in node:vm like the page runs it.
+// acidbass.test.mjs — My lil acid bass's pure core (sequencer rules, cleaning, automation, files), run in node:vm like the page runs it.
 // Author: Ari Klopfer / A_Development
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { crc32 as nodeCrc32 } from 'node:zlib';
 
-const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'acidbass2.js'), 'utf8');
+const SRC = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'acidbass.js'), 'utf8');
 const load = () => { const sandbox = { TextEncoder }; sandbox.window = sandbox; vm.runInContext(SRC, vm.createContext(sandbox)); return sandbox.TB303; };
 const T = load();
 const plain = (o) => JSON.parse(JSON.stringify(o));   // vm-realm objects are not deepEqual to ours under node

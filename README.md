@@ -1,28 +1,27 @@
-# A_Development plugins
+# My lil acid bass
 
-Browser instruments and tools by [A_Development](https://github.com/Adev-io). Each one is a single page: open it and use it. No install, no build, no dependencies.
-
-| Plugin | What it is |
-|---|---|
-| [`acid-bass-2/`](acid-bass-2/) | **Acid Bass Line 2**: the 303-style bass synth plus separate filter and amp **ADSR**, a gate-length knob, a live envelope view and a **ping-pong delay** |
-| [`tb303/`](tb303/) | **Acid Bass Line** (v1): the original 303-style synth, one decay envelope |
+A 303-style acid bass synth and 32-step sequencer that runs in your browser, with a native VST3 for FL Studio in progress. By [A_Development](https://github.com/Adev-io). One page, no install, no build, no dependencies.
 
 ## Use it
 
-- **Online:** https://adev-io.github.io/A_Development-plugins/
+- **Online:** https://adev-io.github.io/my-lil-acid-bass/
 - **Locally:** open `index.html` in a browser (Chrome, Edge, Firefox). Audio starts on your first click or key press.
+- **Classic:** the original, simpler version (one decay envelope, no delay) is kept in [`classic/`](classic/): https://adev-io.github.io/my-lil-acid-bass/classic/
 
-## Acid Bass Line 2
+## What it does
 
-Everything in v1 (below), plus an **Envelope** panel:
+**Sound.** Saw or square oscillator into a resonant 24 dB lowpass, with Tuning, Cutoff, Resonance, Env Mod, Accent, Volume and Tempo (40-300 BPM). Accent boosts level, shortens the filter decay and builds on stacked accents. Slide glides pitch without retriggering.
+
+**Play.** The on-screen keys, or `Z S X D C V G B H N J M ,` on your keyboard. Up / Down shift the octave, Accent and Slide apply to the notes you play. Space runs and stops.
+
+**Sequence.** 32 patterns (2 banks x A/B x 8), up to 32 steps each. Click a step, press a key to write a note (Write stays on), press **Rest** to remove it, **Tie** to hold the previous note. Under each step: octave, accent, slide. **Track** mode chains patterns into a song. **Load demo set** fills six starter lines and a sound to hear them in.
+
+**Envelope** (press **Envelope**):
 
 - **Filter envelope:** Attack, Decay, Sustain, Release. Env Mod is the depth; Sustain is a fraction of that depth held while the gate is up; Release returns the filter to the cutoff.
 - **Amp envelope:** Attack, Decay, Sustain, Release for the volume shape. Short decay and sustain 0 gives plucks; long attack and release gives pads.
 - **Gate length:** how much of each step the note is held, 10-100% (55% matches the original 303). It also sets the note lengths in the exported MIDI.
-- **Live view:** both envelope shapes are drawn from the current knob values.
-- **Automate** reaches every envelope knob too. Defaults reproduce v1's sound, so nothing changes until you touch them. Accent still shortens the filter decay.
-
-**MIDI in** (press **MIDI in**, Chrome or Edge): play the synth from a MIDI keyboard, or from FL Studio through a virtual MIDI cable such as [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html). Notes play the voice and, while **Write** is on, record into the selected step; velocity 110 or more is an accent; the Slide and Up/Down buttons apply as they do for the on-screen keys. Controllers: CC74 cutoff, CC71 resonance, CC7 volume. The audio still plays from the browser, so to hear it inside FL you need a virtual audio cable too: for a proper FL instrument see the plugin in progress under `plugin/`.
+- **Live view:** both envelope shapes are drawn from the current knob values. Accent still shortens the filter decay.
 
 **Delay** (press **Delay**):
 
@@ -30,23 +29,20 @@ Everything in v1 (below), plus an **Envelope** panel:
 - **Sync** snaps Time to note divisions of the tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/2T, 1/4., 1/2 (T = triplet, . = dotted). The echo follows the Tempo knob, automated or not, and flipping Sync keeps the echo where it was.
 - **Ping-pong** makes repeats alternate left and right every Time; off, the repeats stay centred.
 - **Fat** darkens each repeat, saturates it and wobbles the time slightly, for thick, tape-like echoes. The saturation never adds gain, so repeats still die away even at maximum feedback.
-- All three knobs are automatable, so you can sweep the delay time or ride the mix.
 
-State is stored under its own key, so v1 and v2 never overwrite each other's patterns.
+**Automate.** Press **Automate** to show min %, max %, `~` and beats-per-sweep under every knob, including the envelope and delay knobs. With `~` on, the knob sweeps between your min and max in time with the tempo.
 
-## Acid Bass Line (v1)
-
-**Sound.** Saw or square oscillator into a resonant 24 dB lowpass, with Tuning, Cutoff, Resonance, Env Mod, Decay, Accent, Volume and Tempo (40-300 BPM). Accent shortens the filter decay, boosts level and builds on stacked accents. Slide glides pitch without retriggering.
-
-**Play.** The on-screen keys, or `Z S X D C V G B H N J M ,` on your keyboard. Up / Down shift the octave, Accent and Slide apply to the notes you play. Space runs and stops.
-
-**Sequence.** 32 patterns (2 banks x A/B x 8), up to 32 steps each. Click a step, press a key to write a note (Write stays on), press **Rest** to remove it, **Tie** to hold the previous note. Under each step: octave, accent, slide. **Track** mode chains patterns into a song. **Load demo set** fills six starter lines and a sound to hear them in.
-
-**Automate.** Press **Automate** to show min %, max %, `~` and beats-per-sweep under every knob. With `~` on, the knob sweeps between your min and max in time with the tempo.
+**MIDI in** (press **MIDI in**, Chrome or Edge): play the synth from a MIDI keyboard, or from FL Studio through a virtual MIDI cable such as [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html). Notes play the voice and, while **Write** is on, record into the selected step; velocity 110 or more is an accent; the Slide and Up/Down buttons apply as they do for the on-screen keys. Controllers: CC74 cutoff, CC71 resonance, CC7 volume. The audio still plays from the browser, so to hear it inside FL you need a virtual audio cable too: for a proper FL instrument see the plugin in progress under `plugin/`.
 
 **Export.** **Export folder** downloads `303-patterns.zip`: one `.txt` (step notation, tempo, knob settings) and one `.mid` per pattern, plus `song.txt` / `song.mid` for the song chain. In the MIDI, accents are loud notes, slides overlap the next note, and ties hold one note.
 
 Step notation, one token per step: `C`..`B` note, `C'` high C, `^` `_` octave up/down, `*` accent, `~` slide, `-` rest, `=` tie. Example: `A* - A A^ - A_* A - G~ A - A* - C^ - E~`.
+
+Your patterns and knob settings are saved in your browser, under their own key, separate from the classic version's.
+
+## FL Studio plugin
+
+[`plugin/`](plugin/) is a native VST3 version built on JUCE, for FL Studio and other hosts. It is in progress (phase 1: voice, parameters, MIDI, slide, accent); see [plugin/README.md](plugin/README.md) for what works, how to build it and how to install it in FL.
 
 ## Develop
 
@@ -54,14 +50,10 @@ Step notation, one token per step: `C`..`B` note, `C'` high C, `^` `_` octave up
 bun test                           # or: node --test
 ```
 
-Each plugin folder is `index.html` (audio and UI) plus a pure half (`tb303/tb303.js`, `acid-bass-2/acidbass2.js`): sequencer rules, state cleaning, automation, MIDI and zip writers, tested without a browser.
-
-## FL Studio plugin
-
-[`plugin/`](plugin/) is a native VST3 version of Acid Bass 2 built on JUCE, for FL Studio and other hosts. It is in progress (phase 1: voice, parameters, MIDI, slide, accent); see [plugin/README.md](plugin/README.md) for what works, how to build it and how to install it in FL.
+`index.html` is the audio and UI; `acidbass.js` is the pure half (sequencer rules, state cleaning, automation, MIDI and zip writers), tested without a browser in `acidbass.test.mjs`. `classic/` has the same split.
 
 ## License
 
-The web plugins (`tb303/`, `acid-bass-2/`, the landing page) are **MIT**. Copyright (c) 2026 Ari Klopfer / A_Development. See [LICENSE](LICENSE).
+The web app (`index.html`, `acidbass.js`, `classic/`) is **MIT**. Copyright (c) 2026 Ari Klopfer / A_Development. See [LICENSE](LICENSE).
 
 The native plugin in `plugin/` is **AGPL-3.0-or-later**, because it links the JUCE framework under JUCE's open-source AGPLv3 option. See [plugin/LICENSE](plugin/LICENSE).
