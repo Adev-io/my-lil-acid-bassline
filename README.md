@@ -56,6 +56,12 @@ bun test                           # or: node --test
 
 Each plugin folder is `index.html` (audio and UI) plus a pure half (`tb303/tb303.js`, `acid-bass-2/acidbass2.js`): sequencer rules, state cleaning, automation, MIDI and zip writers, tested without a browser.
 
+## FL Studio plugin
+
+[`plugin/`](plugin/) is a native VST3 version of Acid Bass 2 built on JUCE, for FL Studio and other hosts. It is in progress (phase 1: voice, parameters, MIDI, slide, accent); see [plugin/README.md](plugin/README.md) for what works, how to build it and how to install it in FL.
+
 ## License
 
-MIT. Copyright (c) 2026 Ari Klopfer / A_Development.
+The web plugins (`tb303/`, `acid-bass-2/`, the landing page) are **MIT**. Copyright (c) 2026 Ari Klopfer / A_Development. See [LICENSE](LICENSE).
+
+The native plugin in `plugin/` is **AGPL-3.0-or-later**, because it links the JUCE framework under JUCE's open-source AGPLv3 option. See [plugin/LICENSE](plugin/LICENSE).
