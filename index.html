@@ -58,6 +58,8 @@
   .grp{display:flex;gap:2px;align-items:center}.grp>.t{font-size:9px;letter-spacing:.08em;margin-right:3px;text-transform:uppercase}
   textarea{width:100%;height:46px;font:10px Consolas,monospace;border:1px solid #555;border-radius:3px;background:#f4f4f6;resize:vertical;-webkit-user-select:text;user-select:text}
   #msg{font-size:10px;color:#700;min-height:12px}
+  #drag{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+  .chip{background:#222;color:#ffb347;border:1px solid #6c6f76;border-radius:3px;padding:4px 8px;font-size:11px;text-decoration:none;cursor:grab}
   input[type=range]{width:90px}
   .sr{position:absolute;left:-9999px}
 </style></head><body>
@@ -121,7 +123,8 @@
 
   <div>
     <textarea id="io" spellcheck="false" aria-label="Pattern JSON" placeholder="Export fills this with the pattern; paste JSON here and press Import"></textarea>
-    <div class="row"><button class="btn" id="expFiles" title="download every pattern as .txt and .mid, plus the song, in one zip">Export folder (txt + MIDI)</button><button class="btn" id="exp">Show pattern JSON</button><button class="btn" id="imp">Import into pattern</button><span id="msg" role="status"></span></div>
+    <div class="row"><button class="btn" id="expFiles" title="make a draggable .mid for every pattern and the song">MIDI for FL (drag &amp; drop)</button><button class="btn" id="expZip" title="download every pattern as .txt and .mid, plus the song, in one zip">Export folder (txt + MIDI)</button><button class="btn" id="exp">Show pattern JSON</button><button class="btn" id="imp">Import into pattern</button><span id="msg" role="status"></span></div>
+    <div id="drag"></div>
   </div>
 </div>
 <script src="acidbass.js"></script>
@@ -570,7 +573,20 @@ $('clear').onclick = () => { S.patterns[S.cur] = T.emptyPattern(); cursor = 0; p
 $('sAdd').onclick = () => { if (S.song.length < 16) S.song.push(S.cur); paintSteps(); save(); };
 $('demo').onclick = () => { T.loadDemo(S); for (const k of Object.keys(knobUI)) knobUI[k].sync(); if (ctx) { f2.Q.value = T.resQ(S.knobs.res); applyCutoff(); } cursor = 0; paintSteps(); save(); };
 $('sClr').onclick = () => { S.song = []; paintSteps(); save(); };
+// One draggable chip per .mid: drag it onto the FL Studio playlist or piano roll, or click to download it.
 $('expFiles').onclick = () => {
+  const files = T.exportFiles(S).filter((f) => f.name.endsWith('.mid'));
+  if (!files.length) { $('msg').textContent = 'nothing to export: write a note into a step first'; return; }
+  const box = $('drag'); box.textContent = '';
+  for (const f of files) {
+    const url = URL.createObjectURL(new Blob([f.data], { type: 'audio/midi' }));
+    const a = document.createElement('a'); a.className = 'chip'; a.textContent = f.name; a.href = url; a.download = f.name; a.draggable = true;
+    a.ondragstart = (e) => e.dataTransfer.setData('DownloadURL', 'audio/midi:' + f.name + ':' + url);
+    box.append(a);
+  }
+  $('msg').textContent = 'drag a .mid chip into FL Studio (or click it to save)';
+};
+$('expZip').onclick = () => {
   const files = T.exportFiles(S);
   if (!files.length) { $('msg').textContent = 'nothing to export: write a note into a step first'; return; }
   const url = URL.createObjectURL(new Blob([T.zip(files, '303-patterns')], { type: 'application/zip' }));
