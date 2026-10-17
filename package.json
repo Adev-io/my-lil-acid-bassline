@@ -1,5 +1,5 @@
 {
-  "name": "my-lil-acid-bass",
+  "name": "my-lil-acid-bassline",
   "version": "0.1.0",
   "description": "A 303-style acid bass synth and 32-step sequencer in your browser, with a VST3 for FL Studio in progress.",
   "license": "MIT",

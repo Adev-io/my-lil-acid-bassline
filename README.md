@@ -1,12 +1,14 @@
-# My lil acid bass
+# My lil acid bassline
 
-A 303-style acid bass synth and 32-step sequencer that runs in your browser, with a native VST3 for FL Studio in progress. By [A_Development](https://github.com/Adev-io). One page, no install, no build, no dependencies.
+**by A_Development**
+
+A 303-style acid bass synth and 32-step sequencer that runs in your browser, with a native VST3 for FL Studio in progress. One page, no install, no build, no dependencies.
 
 ## Use it
 
-- **Online:** https://adev-io.github.io/my-lil-acid-bass/
+- **Online:** https://adev-io.github.io/my-lil-acid-bassline/
 - **Locally:** open `index.html` in a browser (Chrome, Edge, Firefox). Audio starts on your first click or key press.
-- **Classic:** the original, simpler version (one decay envelope, no delay) is kept in [`classic/`](classic/): https://adev-io.github.io/my-lil-acid-bass/classic/
+- **Classic:** the original, simpler version (one decay envelope, no delay) is kept in [`classic/`](classic/): https://adev-io.github.io/my-lil-acid-bassline/classic/
 
 ## What it does
 

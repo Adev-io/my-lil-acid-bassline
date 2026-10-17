@@ -1,4 +1,4 @@
-// acidbass.js — My lil acid bass's pure half (the classic's rules plus filter/amp ADSR, gate length, delay and MIDI): patterns in, per-step note events out, a cleaner for every untrusted
+// acidbass.js — My lil acid bassline's pure half (the classic's rules plus filter/amp ADSR, gate length, delay and MIDI): patterns in, per-step note events out, a cleaner for every untrusted
 // blob (saved state, imported JSON), and the file export (.txt notation, .mid, .zip). No Web Audio and no DOM here,
 // so node can test it.
 // Author: Ari Klopfer / A_Development · MIT

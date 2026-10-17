@@ -1,4 +1,4 @@
-// PluginProcessor.h — My lil acid bass as a VST3 instrument. Phase 1: the voice, eight parameters, a generic editor.
+// PluginProcessor.h — My lil acid bassline as a VST3 instrument. Phase 1: the voice, eight parameters, a generic editor.
 // Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see plugin/LICENSE)
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -20,7 +20,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "My lil acid bass"; }
+    const juce::String getName() const override { return "My lil acid bassline"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }

@@ -1,4 +1,4 @@
-// tb303.js — My lil acid bass classic's pure half: patterns in, per-step note events out, a cleaner for every untrusted
+// tb303.js — My lil acid bassline classic's pure half: patterns in, per-step note events out, a cleaner for every untrusted
 // blob (saved state, imported JSON), and the file export (.txt notation, .mid, .zip). No Web Audio and no DOM here,
 // so node can test it.
 // Author: Ari Klopfer / A_Development · MIT

@@ -1,4 +1,4 @@
-// acidbass.test.mjs — My lil acid bass's pure core (sequencer rules, cleaning, automation, files), run in node:vm like the page runs it.
+// acidbass.test.mjs — My lil acid bassline's pure core (sequencer rules, cleaning, automation, files), run in node:vm like the page runs it.
 // Author: Ari Klopfer / A_Development
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
