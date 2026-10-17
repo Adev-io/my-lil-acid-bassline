@@ -1,0 +1,487 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="icon" href="data:,"><title>Acid Bass Line 2 · A_Development plugins</title>
+<!-- acid-bass-2/index.html — acid bass line 2: the 303-style synth with filter and amp ADSR, gate length, 32-step sequencer,
+     per-knob automation and MIDI export. One page, no build, no dependencies. Pure half: acidbass2.js.
+     Author: Ari Klopfer / A_Development · MIT -->
+<style>
+  :root{--ink:#16161a;--silver1:#e2e3e6;--silver2:#b5b8be;--red:#d8321f;--amber:#ffb23c}
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;background:#2a2b30;font:11px/1.3 "Arial Narrow",Arial,sans-serif;color:var(--ink);-webkit-user-select:none;user-select:none}
+  .case{max-width:780px;margin:0 auto;padding:10px 12px 12px;background:linear-gradient(180deg,var(--silver1),var(--silver2));
+    border-bottom:6px solid #7a7d84;display:flex;flex-direction:column;gap:10px}
+  .head{display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid var(--ink);padding-bottom:3px}
+  .head b{font-size:15px;letter-spacing:.18em}.head span{font-size:9px;letter-spacing:.12em;text-transform:uppercase}
+  .sect{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:flex-end}
+  .panel{background:#17171b;border-radius:5px;padding:8px 8px 6px;display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:space-between;color:#eee}
+  .lab{font-size:9px;letter-spacing:.1em;text-transform:uppercase;text-align:center;color:#eee}
+  .kw{display:flex;flex-direction:column;align-items:center;gap:2px;width:62px}
+  .knob{width:44px;height:44px;border-radius:50%;cursor:ns-resize;touch-action:none;position:relative;outline:none;
+    background:radial-gradient(circle at 35% 30%,#555,#111 70%);box-shadow:0 2px 4px #000a,inset 0 0 0 2px #000}
+  .knob::after{content:"";position:absolute;left:50%;top:3px;width:3px;height:15px;margin-left:-1.5px;background:#fff;border-radius:2px;
+    transform-origin:50% 19px;transform:rotate(var(--a,0deg))}
+  .knob:focus-visible{box-shadow:0 0 0 3px var(--amber)}
+  .au{display:none;flex-direction:column;gap:2px;align-items:center}#case.showauto .au{display:flex}
+  .au>div{display:flex;gap:2px}
+  .au input{width:36px;padding:1px;font:10px Consolas,monospace;border:1px solid #555;border-radius:2px;background:#eee;color:#111;-webkit-user-select:text;user-select:text}
+  .au .rt{width:36px}.au .on{padding:0 5px;font-size:11px}
+  .knob.auto{box-shadow:0 0 0 2px var(--amber),0 2px 4px #000a}
+  .panel.hidden{display:none}
+  .eg{display:flex;flex-direction:column;gap:3px;min-width:0}.eg .gt{font-size:9px;letter-spacing:.14em;color:var(--amber);text-transform:uppercase}
+  .krow{display:flex;gap:4px;flex-wrap:wrap}
+  canvas.envc{width:100%;height:36px;background:#0d0d11;border:1px solid #333;border-radius:3px;display:block}
+  .val{font:10px Consolas,monospace;color:#bcd;height:12px}
+  button{font:inherit;cursor:pointer}
+  .btn{background:linear-gradient(#f0f0f2,#c4c6cb);border:1px solid #6c6f76;border-radius:3px;padding:4px 8px;color:var(--ink);text-transform:uppercase;letter-spacing:.06em;font-size:10px}
+  .btn:focus-visible,.sb:focus-visible,.chip:focus-visible,.key:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+  .btn.on{background:linear-gradient(#ffd27a,#ff9d1c);box-shadow:inset 0 0 0 1px #8a4b00}
+  .btn.run.on{background:linear-gradient(#ff7a66,var(--red));color:#fff}
+  .keys{display:flex;gap:3px;flex:1;min-width:260px}
+  .key{flex:1;min-width:0;height:42px;border:1px solid #333;border-radius:3px;background:linear-gradient(#fafafa,#d4d5d9);color:#222;font-size:10px}
+  .key.sharp{background:linear-gradient(#444,#111);color:#eee}
+  .key.down{background:var(--amber)}
+  .steps{display:grid;grid-template-columns:repeat(16,1fr);gap:3px}
+  @media (max-width:600px){.steps{grid-template-columns:repeat(8,1fr)}.kw{width:56px}}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:2px;opacity:1}
+  .cell.off{opacity:.35}
+  .cell[hidden]{display:none}
+  .led{width:100%;height:5px;border-radius:2px;background:#6b2a22}
+  .led.on{background:var(--red);box-shadow:0 0 6px var(--red)}
+  .sb{width:100%;height:34px;border:1px solid #333;border-radius:3px;background:linear-gradient(#f4f4f5,#c9cacf);color:#111;font-size:11px;font-weight:bold;padding:0}
+  .sb.note{background:linear-gradient(#ffe7a8,#ffb23c)}
+  .sb.tie{background:linear-gradient(#cfe8ff,#7fb8f2)}
+  .cell.cur .sb{outline:2px solid #1a6dff;outline-offset:0}
+  .chips{display:flex;gap:1px;width:100%}
+  .chip{flex:1;min-width:0;padding:1px 0;font-size:9px;border:1px solid #666;border-radius:2px;background:#ddd;color:#111}
+  .chip.on{background:var(--red);color:#fff;border-color:#700}
+  .row{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .grp{display:flex;gap:2px;align-items:center}.grp>.t{font-size:9px;letter-spacing:.08em;margin-right:3px;text-transform:uppercase}
+  textarea{width:100%;height:46px;font:10px Consolas,monospace;border:1px solid #555;border-radius:3px;background:#f4f4f6;resize:vertical;-webkit-user-select:text;user-select:text}
+  #msg{font-size:10px;color:#700;min-height:12px}
+  input[type=range]{width:90px}
+  .sr{position:absolute;left:-9999px}
+</style></head><body>
+<div class="case" id="case">
+  <div class="head"><b>ACID BASS LINE 2</b><span>computer controlled · up to 32 step</span></div>
+
+  <div class="panel" id="knobs"></div>
+  <div class="panel hidden" id="env">
+    <div class="eg"><div class="gt">Filter envelope</div><div class="krow" id="envF"></div><canvas class="envc" id="cvF" aria-label="Filter envelope shape"></canvas></div>
+    <div class="eg"><div class="gt">Amp envelope</div><div class="krow" id="envA"></div><canvas class="envc" id="cvA" aria-label="Amp envelope shape"></canvas></div>
+    <div class="eg"><div class="gt">Gate</div><div class="krow" id="envG"></div></div>
+  </div>
+
+  <div class="sect">
+    <div class="grp"><span class="t">wave</span><button class="btn" id="wSaw" aria-pressed="true">Saw</button><button class="btn" id="wSq" aria-pressed="false">Square</button></div>
+    <div class="grp"><span class="t">swing</span><input type="range" id="swing" min="0" max="100" value="0" aria-label="Swing"></div>
+    <button class="btn" id="envBtn" aria-pressed="false" title="show the filter and amp ADSR and the gate length">Envelope</button>
+    <button class="btn" id="autoBtn" aria-pressed="false" title="show per-knob automation: min %, max %, ~ on/off, beats per sweep">Automate</button>
+    <label class="grp"><input type="checkbox" id="sync"><span class="t" style="margin:0 0 0 3px">stop at pattern end</span></label>
+  </div>
+
+  <div class="sect">
+    <div class="keys" id="keys" role="group" aria-label="Keyboard"></div>
+    <div class="grp"><button class="btn" id="oUp">Up</button><button class="btn" id="oDn">Down</button><button class="btn" id="mAcc">Accent</button><button class="btn" id="mSl">Slide</button></div>
+  </div>
+
+  <div class="steps" id="steps" role="group" aria-label="Steps"></div>
+  <div style="font-size:10px;color:#333">Add a note: click a step (blue outline), press a key. Remove one: click the step, press <b>Rest</b>. Under each step: octave · <b>A</b>ccent · <b>S</b>lide. Keep <b>Write</b> on.</div>
+
+  <div class="sect">
+    <div class="grp"><span class="t">pattern</span><span id="pname" style="font:bold 12px Consolas,monospace;min-width:34px">I-A1</span></div>
+    <div class="grp" id="gBank"><span class="t">bank</span></div>
+    <div class="grp" id="gGroup"><span class="t">group</span></div>
+    <div class="grp" id="gSlot"><span class="t">no.</span></div>
+  </div>
+
+  <div class="sect">
+    <button class="btn run" id="run" aria-pressed="false">Run / Stop</button>
+    <button class="btn" id="mode" aria-pressed="false" title="Pattern: loop this pattern. Track: play the song chain">Pattern</button>
+    <button class="btn" id="wmode" title="Pitch: tap keys to write at the step. Time: a step button cycles note / rest / tie">Pitch write</button>
+    <button class="btn" id="rec" aria-pressed="false" title="While on, a key writes its note into the selected step and moves on">Write</button><button class="btn" id="wRest" title="make the selected step a rest (removes the note) and move on">Rest</button><button class="btn" id="wTie" title="make the selected step a tie (holds the note before it) and move on">Tie</button>
+    <button class="btn" id="back">Back</button><button class="btn" id="next">Next</button>
+    <button class="btn" id="lenM" aria-label="Shorter pattern">−</button><span id="len" style="font:bold 11px Consolas,monospace;min-width:48px;text-align:center">LEN 16</span><button class="btn" id="lenP" aria-label="Longer pattern">+</button>
+    <button class="btn" id="clear">Clear</button>
+  </div>
+
+  <div class="sect">
+    <span class="t" style="font-size:9px;letter-spacing:.08em;text-transform:uppercase">song</span><span id="song" style="font:11px Consolas,monospace;flex:1;min-width:120px">(empty)</span>
+    <button class="btn" id="sAdd">+ Add</button><button class="btn" id="sClr">Clear song</button><button class="btn" id="demo" title="overwrite I-A1..I-A6, the song and the sound with a starter set">Load demo set</button>
+  </div>
+
+  <div>
+    <textarea id="io" spellcheck="false" aria-label="Pattern JSON" placeholder="Export fills this with the pattern; paste JSON here and press Import"></textarea>
+    <div class="row"><button class="btn" id="expFiles" title="download every pattern as .txt and .mid, plus the song, in one zip">Export folder (txt + MIDI)</button><button class="btn" id="exp">Show pattern JSON</button><button class="btn" id="imp">Import into pattern</button><span id="msg" role="status"></span></div>
+  </div>
+</div>
+<script src="acidbass2.js"></script>
+<script>
+'use strict';
+const $ = (id) => document.getElementById(id);
+const T = window.TB303;
+let S = T.newState();
+let ctx = null, osc, f1, f2, vca, master;
+const mods = { oct: 0, accent: false, slide: false };   // sticky: shape live play and Write
+let cursor = 0, timeMode = false, rec = true, songMode = 'pattern';
+const run = { on: false, step: 0, slot: 0, songPos: 0, next: 0, stopAtEnd: false };
+const queue = [];
+let sweep = 0, lastFreq = 110, timer = null;
+
+// ---- audio ----
+function ensureAudio() {
+  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  osc = ctx.createOscillator(); osc.type = S.wave === 'square' ? 'square' : 'sawtooth'; osc.frequency.value = 110;
+  // Two cascaded lowpass biquads: 24 dB/oct, resonance only on the second so the peak is a single clean ridge.
+  f1 = ctx.createBiquadFilter(); f1.type = 'lowpass'; f1.Q.value = 0.5; f1.frequency.value = T.cutoffHz(S.knobs.cutoff);
+  f2 = ctx.createBiquadFilter(); f2.type = 'lowpass'; f2.Q.value = T.resQ(S.knobs.res); f2.frequency.value = f1.frequency.value;
+  vca = ctx.createGain(); vca.gain.value = 0;
+  master = ctx.createGain(); master.gain.value = S.knobs.volume;
+  // ponytail: tanh soft clip stands in for the 303's output stage; it also tames the resonance peak.
+  const sh = ctx.createWaveShaper(), c = new Float32Array(1024);
+  for (let i = 0; i < 1024; i++) c[i] = Math.tanh((i / 511.5 - 1) * 1.6);
+  sh.curve = c;
+  osc.connect(f1); f1.connect(f2); f2.connect(vca); vca.connect(master); master.connect(sh); sh.connect(ctx.destination);
+  osc.start();
+}
+// A knob's live value: its manual position, or the automation sine when that is on. The sine's clock is the
+// tempo KNOB's manual value, so automating tempo never feeds back into its own LFO.
+const beatsAt = (t) => t * T.bpmOf(S.knobs.tempo) / 60;
+const val = (key, t) => { const a = S.auto[key]; return a.on && ctx ? T.autoValue(a, beatsAt(t === undefined ? ctx.currentTime : t)) : S.knobs[key]; };
+const effCut = (t) => val('cutoff', t);
+// Gate off truncates whatever attack/decay is still pending (cancelScheduledValues) and starts both releases.
+function gateOff(t) {
+  const base = T.cutoffHz(effCut(t));
+  for (const p of [f1.frequency, f2.frequency]) { p.cancelScheduledValues(t); p.setTargetAtTime(base, t, T.relSec(val('frel', t)) / 3); }
+  vca.gain.cancelScheduledValues(t);
+  vca.gain.setTargetAtTime(0, t, T.relSec(val('arel', t)) / 3);
+}
+// One step's worth of voice. t is AudioContext time; ev is the core's stepEvent output.
+function play(ev, t, sec) {
+  if (ev.off) return;
+  const k = {}; for (const n of Object.keys(S.knobs)) k[n] = val(n, t);
+  const f = T.freqOf(ev.midi, T.tuneCents(k.tuning));
+  if (ev.glide) {
+    osc.frequency.setValueAtTime(lastFreq, t);
+    osc.frequency.exponentialRampToValueAtTime(f, t + 0.06);   // the 303's ~60 ms slide
+  } else if (ev.trig) {
+    osc.frequency.setValueAtTime(f, t);
+  }
+  lastFreq = f;
+  const tOff = ev.hold ? Infinity : t + sec * (ev.len < 0.9 ? T.gateFrac(k.gate) : ev.len);
+  if (ev.trig) {
+    sweep = ev.accent ? Math.min(1, sweep + 0.35) : sweep * 0.5;   // the accent capacitor: stacked accents build
+    const base = T.cutoffHz(effCut(t)), acc = ev.accent ? k.accent : 0;
+    const oct = k.envmod * 4.5 + acc * 1.6 + sweep * k.accent * 0.8;
+    const peak = Math.min(base * Math.pow(2, oct), 16000);
+    const hold = Math.min(base * Math.pow(2, oct * k.fsus), 16000);   // filter sustain: a fraction of the env depth, in octaves
+    const atk = T.atkSec(k.fatk), dec = ev.accent ? Math.min(T.decSec(k.fdec), 0.2) : T.decSec(k.fdec);   // accent: short filter decay
+    const top = Math.max(Math.min(t + atk, tOff - 0.001), t + 0.001);   // the peak is reached before a short gate closes
+    for (const p of [f1.frequency, f2.frequency]) {
+      p.cancelScheduledValues(t); p.setValueAtTime(base, t); p.exponentialRampToValueAtTime(peak, top); p.setTargetAtTime(hold, top, dec / 3);
+    }
+    const L = 0.45 * (1 + acc * 0.9) / (1 + k.res * 0.6);   // res eats level on hardware too
+    const aa = Math.max(T.atkSec(k.aatk), 0.002);
+    vca.gain.cancelScheduledValues(t);
+    vca.gain.setTargetAtTime(L, t, aa / 4);
+    vca.gain.setTargetAtTime(L * k.asus, t + aa, T.decSec(k.adec) / 3);
+  }
+  if (tOff !== Infinity) gateOff(tOff);
+}
+
+// ---- sequencer: look-ahead scheduler on audio time ----
+const bpm = () => T.bpmOf(val('tempo'));
+function tick() {
+  if (!run.on) return;
+  const horizon = ctx.currentTime + 0.12;
+  while (run.next < horizon) {
+    const p = S.patterns[run.slot], i = run.step, sec = T.stepSeconds(bpm());
+    const t = run.next + (i % 2 ? S.swing * sec * 0.33 : 0);
+    play(T.stepEvent(p, i), t, sec);
+    queue.push({ t, slot: run.slot, step: i });
+    run.next += sec;
+    if (++run.step >= p.len) {
+      run.step = 0;
+      if (run.stopAtEnd) { stopRun(false); return; }
+      const n = T.nextSlot(S, songMode, run.songPos);
+      run.slot = n.slot; run.songPos = n.songPos;
+    }
+  }
+}
+function startRun() {
+  ensureAudio();
+  run.on = true; run.stopAtEnd = false; run.step = 0; run.songPos = 0;
+  run.slot = songMode === 'track' && S.song.length ? S.song[0] : S.cur;
+  run.next = ctx.currentTime + 0.06; sweep = 0;
+  timer = setInterval(tick, 25); tick(); paintRun();
+}
+function stopRun(now) {
+  if (!run.on) return;
+  if (now === false || !$('sync').checked) {
+    run.on = false; clearInterval(timer); timer = null; queue.length = 0;
+    if (ctx) { vca.gain.cancelScheduledValues(ctx.currentTime); gateOff(ctx.currentTime); }
+    paintRun(); paintSteps();
+  } else { run.stopAtEnd = true; }
+}
+$('run').onclick = () => (run.on ? stopRun(true) : startRun());
+
+// ---- live keys ----
+const held = [];
+function noteOn(n) {
+  ensureAudio();
+  const midi = T.midiOf({ note: n, oct: mods.oct });
+  const legato = mods.slide && held.length > 0;
+  const t = ctx.currentTime + 0.005;
+  held.push(n);
+  play({ off: false, trig: !legato, glide: legato, midi, accent: mods.accent, hold: true, len: 1 }, t, 0.3);
+  if (rec) { cursor = T.writeNote(S.patterns[S.cur], cursor, n, mods); paintSteps(); save(); }
+}
+function noteOff(n) {
+  const i = held.lastIndexOf(n);
+  if (i < 0) return;
+  held.splice(i, 1);
+  if (!held.length && ctx && !run.on) gateOff(ctx.currentTime + 0.01);
+}
+const KEYMAP = 'zsxdcvgbhnjm,';
+const keyEls = [];
+T.NAMES.forEach((nm, n) => {
+  const b = document.createElement('button');
+  b.className = 'key' + (nm.includes('#') ? ' sharp' : ''); b.textContent = nm; b.setAttribute('aria-label', 'Key ' + nm + (n === 12 ? ' high' : ''));
+  b.onpointerdown = (e) => { e.preventDefault(); b.setPointerCapture(e.pointerId); b.classList.add('down'); noteOn(n); };
+  b.onpointerup = b.onpointercancel = () => { b.classList.remove('down'); noteOff(n); };
+  $('keys').appendChild(b); keyEls.push(b);
+});
+addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA)$/.test((e.target || {}).tagName)) return;
+  if (e.key === ' ' && e.target.tagName !== 'BUTTON') { e.preventDefault(); $('run').click(); return; }
+  const n = KEYMAP.indexOf(e.key.toLowerCase());
+  if (n < 0 || e.repeat) return;
+  keyEls[n].classList.add('down'); noteOn(n);
+});
+addEventListener('keyup', (e) => {
+  const n = KEYMAP.indexOf(e.key.toLowerCase());
+  if (n < 0) return;
+  keyEls[n].classList.remove('down'); noteOff(n);
+});
+const flag2 = (b, on) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); };
+const flag = (id, on) => { $(id).classList.toggle('on', on); $(id).setAttribute('aria-pressed', String(on)); };
+$('oUp').onclick = () => { mods.oct = mods.oct === 1 ? 0 : 1; paintMods(); };
+$('oDn').onclick = () => { mods.oct = mods.oct === -1 ? 0 : -1; paintMods(); };
+$('mAcc').onclick = () => { mods.accent = !mods.accent; paintMods(); };
+$('mSl').onclick = () => { mods.slide = !mods.slide; paintMods(); };
+function paintMods() { flag('oUp', mods.oct === 1); flag('oDn', mods.oct === -1); flag('mAcc', mods.accent); flag('mSl', mods.slide); }
+
+// ---- knobs ----
+const pc = (v) => Math.round(v * 100) + '%';
+const ms = (s) => (s < 1 ? Math.round(s * 1000) + 'ms' : s.toFixed(2) + 's');
+// [key, label, formatter, container]
+const KNOBDEF = [
+  ['tuning', 'Tuning', (v) => (T.tuneCents(v) >= 0 ? '+' : '') + Math.round(T.tuneCents(v)) + 'c', 'knobs'],
+  ['cutoff', 'Cutoff Freq', (v) => Math.round(T.cutoffHz(v)) + 'Hz', 'knobs'],
+  ['res', 'Resonance', pc, 'knobs'],
+  ['envmod', 'Env Mod', pc, 'knobs'],
+  ['accent', 'Accent', pc, 'knobs'],
+  ['volume', 'Volume', pc, 'knobs'],
+  ['tempo', 'Tempo', (v) => T.bpmOf(v) + ' bpm', 'knobs'],
+  ['fatk', 'Attack', (v) => ms(T.atkSec(v)), 'envF'],
+  ['fdec', 'Decay', (v) => ms(T.decSec(v)), 'envF'],
+  ['fsus', 'Sustain', pc, 'envF'],
+  ['frel', 'Release', (v) => ms(T.relSec(v)), 'envF'],
+  ['aatk', 'Attack', (v) => ms(T.atkSec(v)), 'envA'],
+  ['adec', 'Decay', (v) => ms(T.decSec(v)), 'envA'],
+  ['asus', 'Sustain', pc, 'envA'],
+  ['arel', 'Release', (v) => ms(T.relSec(v)), 'envA'],
+  ['gate', 'Gate length', (v) => pc(T.gateFrac(v)), 'envG'],
+];
+const knobUI = {};
+function setKnob(key, v) {
+  v = Math.min(1, Math.max(0, v));
+  S.knobs[key] = v; paintKnob(key); save();
+  if (!ctx) return;
+  const now = ctx.currentTime;
+  if (key === 'res') f2.Q.setTargetAtTime(T.resQ(v), now, 0.02);
+  if (key === 'volume') master.gain.setTargetAtTime(v, now, 0.02);
+  if (key === 'cutoff') applyCutoff();
+}
+// The envelope decays toward the cutoff knob, so a held note or a running line follows a twist at once. It
+// does flatten the tail of a decay already under way; each new note restarts from the new base anyway.
+function applyCutoff() {
+  if (!ctx) return;
+  for (const p of [f1.frequency, f2.frequency]) p.setTargetAtTime(T.cutoffHz(effCut()), ctx.currentTime, 0.05);
+}
+function paintKnob(key) {
+  const def = KNOBDEF.find((d) => d[0] === key), ui = knobUI[key], v = val(key);
+  ui.el.classList.toggle('auto', S.auto[key].on);
+  ui.el.style.setProperty('--a', (-135 + v * 270) + 'deg');
+  ui.el.setAttribute('aria-valuenow', Math.round(v * 100)); ui.el.setAttribute('aria-valuetext', def[2](v));
+  ui.val.textContent = def[2](v);
+  if (/^[fa](atk|dec|sus|rel)$/.test(key)) drawEnvs();
+}
+// The two envelope shapes, drawn from the live values: attack up, decay to the sustain level, a held stretch, release.
+function drawEnv(cv, pre) {
+  const w = cv.width = cv.clientWidth * 2 || 240, h = cv.height = 72, v = (n) => val(pre + n);
+  const a = T.atkSec(v('atk')), d = T.decSec(v('dec')), r = T.relSec(v('rel')), s = v('sus'), hold = 0.35;
+  const tot = a + d + hold + r, x = (t) => 4 + (t / tot) * (w - 8), y = (l) => h - 6 - l * (h - 12);
+  const g = cv.getContext('2d');
+  g.clearRect(0, 0, w, h); g.strokeStyle = '#ffb23c'; g.lineWidth = 2; g.beginPath(); g.moveTo(x(0), y(0)); g.lineTo(x(a), y(1));
+  for (let i = 1; i <= 24; i++) g.lineTo(x(a + d * i / 24), y(s + (1 - s) * Math.exp(-3 * i / 24)));
+  g.lineTo(x(a + d + hold), y(s)); g.lineTo(x(a + d + hold + r), y(0)); g.stroke();
+}
+function drawEnvs() { drawEnv($('cvF'), 'f'); drawEnv($('cvA'), 'a'); }
+for (const [key, label, , cont] of KNOBDEF) {
+  const w = document.createElement('div'); w.className = 'kw';
+  const el = document.createElement('div'); el.className = 'knob'; el.tabIndex = 0; el.setAttribute('role', 'slider');
+  el.setAttribute('aria-label', label); el.setAttribute('aria-valuemin', 0); el.setAttribute('aria-valuemax', 100);
+  const lab = document.createElement('div'); lab.className = 'lab'; lab.textContent = label;
+  const val = document.createElement('div'); val.className = 'val';
+  const au = document.createElement('div'); au.className = 'au';
+  au.innerHTML = '<div><input class="mn" type="number" min="0" max="100" step="1" title="automation minimum, % of the knob travel"><input class="mx" type="number" min="0" max="100" step="1" title="automation maximum, % of the knob travel"></div><div><button class="on btn" title="automate this knob: sweep between min and max">~</button><input class="rt" type="number" min="0.25" max="64" step="0.25" title="beats per full sweep (follows tempo)"></div>';
+  const [mn, mx] = au.children[0].children, [onb, rt] = au.children[1].children;
+  mn.setAttribute('aria-label', label + ' automation min %'); mx.setAttribute('aria-label', label + ' automation max %');
+  onb.setAttribute('aria-label', label + ' automation on'); rt.setAttribute('aria-label', label + ' beats per sweep');
+  w.append(el, lab, val, au); $(cont).appendChild(w); knobUI[key] = { el, val, au };
+  const sync = () => { const a = S.auto[key]; mn.value = Math.round(a.min * 100); mx.value = Math.round(a.max * 100); rt.value = a.rate; flag2(onb, a.on); paintKnob(key); };
+  knobUI[key].sync = sync;
+  const edit = (f) => () => { f(S.auto[key]); S.auto[key] = T.cleanState({ auto: { [key]: S.auto[key] } }).auto[key]; ensureAudio(); sync(); save(); };
+  mn.onchange = edit((a) => { a.min = mn.value / 100; });
+  mx.onchange = edit((a) => { a.max = mx.value / 100; });
+  rt.onchange = edit((a) => { a.rate = Number(rt.value); });
+  onb.onclick = edit((a) => { a.on = !a.on; });
+  let y0 = 0, v0 = 0;
+  el.onpointerdown = (e) => { e.preventDefault(); el.focus(); el.setPointerCapture(e.pointerId); y0 = e.clientY; v0 = S.knobs[key]; };
+  el.onpointermove = (e) => { if (el.hasPointerCapture(e.pointerId)) setKnob(key, v0 + (y0 - e.clientY) / (e.shiftKey ? 1600 : 400)); };
+  el.ondblclick = () => setKnob(key, T.KNOBS[key]);
+  el.onwheel = (e) => { e.preventDefault(); setKnob(key, S.knobs[key] + (e.deltaY < 0 ? 0.01 : -0.01)); };
+  el.onkeydown = (e) => {
+    const d = { ArrowUp: 0.01, ArrowRight: 0.01, ArrowDown: -0.01, ArrowLeft: -0.01, PageUp: 0.1, PageDown: -0.1 }[e.key];
+    if (d !== undefined) { e.preventDefault(); setKnob(key, S.knobs[key] + d); }
+    else if (e.key === 'Home') { e.preventDefault(); setKnob(key, 0); }
+    else if (e.key === 'End') { e.preventDefault(); setKnob(key, 1); }
+  };
+}
+function setWave(w) {
+  S.wave = w; flag('wSaw', w === 'saw'); flag('wSq', w === 'square'); save();
+  if (osc) osc.type = w === 'square' ? 'square' : 'sawtooth';
+}
+$('wSaw').onclick = () => { ensureAudio(); setWave('saw'); };
+$('wSq').onclick = () => { ensureAudio(); setWave('square'); };
+$('swing').oninput = (e) => { S.swing = e.target.value / 100; save(); };
+
+// ---- step grid ----
+const cells = [];
+for (let i = 0; i < T.STEPS; i++) {
+  const c = document.createElement('div'); c.className = 'cell';
+  c.innerHTML = '<i class="led"></i><button class="sb"></button><div class="chips"><button class="chip o" title="octave">·</button><button class="chip a" title="accent">A</button><button class="chip s" title="slide">S</button></div>';
+  const [led, sb, chips] = [c.children[0], c.children[1], c.children[2]];
+  sb.setAttribute('aria-label', 'Step ' + (i + 1));
+  chips.children[0].setAttribute('aria-label', 'Octave step ' + (i + 1));
+  chips.children[1].setAttribute('aria-label', 'Accent step ' + (i + 1));
+  chips.children[2].setAttribute('aria-label', 'Slide step ' + (i + 1));
+  const st = () => S.patterns[S.cur].steps[i];
+  sb.onclick = () => { ensureAudio(); cursor = i; if (timeMode) T.cycleGate(st()); paintSteps(); save(); };
+  chips.children[0].onclick = () => { T.cycleOct(st()); paintSteps(); save(); };
+  chips.children[1].onclick = () => { st().accent = !st().accent; paintSteps(); save(); };
+  chips.children[2].onclick = () => { st().slide = !st().slide; paintSteps(); save(); };
+  $('steps').appendChild(c); cells.push({ c, led, sb, chips });
+}
+let playing = -1;
+function paintSteps() {
+  const p = S.patterns[S.cur];
+  cells.forEach((x, i) => {
+    const s = p.steps[i];
+    x.c.hidden = i >= 16 && p.len <= 16;   // the second row only exists once the pattern needs it
+    x.c.classList.toggle('off', i >= p.len); x.c.classList.toggle('cur', i === cursor);
+    x.sb.className = 'sb ' + s.gate;
+    x.sb.textContent = s.gate === 'note' ? T.NAMES[s.note] : s.gate === 'tie' ? 'TIE' : '–';
+    const [o, a, sl] = x.chips.children;
+    o.textContent = s.oct === 1 ? '▲' : s.oct === -1 ? '▼' : '·';
+    o.classList.toggle('on', s.oct !== 0); a.classList.toggle('on', s.accent); sl.classList.toggle('on', s.slide);
+    x.led.classList.toggle('on', i === playing && run.on && run.slot === S.cur);
+  });
+  $('pname').textContent = T.slotName(S.cur); $('len').textContent = 'LEN ' + p.len;
+  $('mode').textContent = songMode === 'track' ? 'Track' : 'Pattern'; flag('mode', songMode === 'track');
+  $('wmode').textContent = timeMode ? 'Time write' : 'Pitch write'; flag('wmode', timeMode);
+  flag('rec', rec);
+  $('song').textContent = S.song.length ? S.song.map(T.slotName).join(' → ') : '(empty)';
+  for (const [g, f] of [['gBank', (b) => Math.floor(S.cur / 16) === b], ['gGroup', (b) => Math.floor((S.cur % 16) / 8) === b], ['gSlot', (b) => S.cur % 8 === b]])
+    [...$(g).querySelectorAll('button')].forEach((b, j) => flag(b.id, f(j)));
+}
+function paintRun() { flag('run', run.on); }
+// LEDs ride audio time: pop every queued step whose time has come.
+(function raf() {
+  if (run.on && ctx) {
+    while (queue.length && queue[0].t <= ctx.currentTime) { playing = queue.shift().step; paintSteps(); }
+  } else if (playing !== -1) { playing = -1; paintSteps(); }
+  requestAnimationFrame(raf);
+})();
+
+// Automation: the sine's value is re-applied to the live params 30x a second. Per-note params (decay, env mod,
+// accent, tuning, tempo) read it at schedule time instead, so they need no pushing.
+setInterval(() => {
+  if (!ctx) return;
+  let any = false;
+  for (const key of Object.keys(knobUI)) if (S.auto[key].on) { any = true; paintKnob(key); }
+  if (!any) return;
+  const now = ctx.currentTime;
+  if (S.auto.res.on) f2.Q.setTargetAtTime(T.resQ(val('res')), now, 0.02);
+  if (S.auto.volume.on) master.gain.setTargetAtTime(val('volume'), now, 0.02);
+  if (S.auto.cutoff.on) applyCutoff();
+}, 33);
+$('autoBtn').onclick = () => { const on = !$('case').classList.contains('showauto'); $('case').classList.toggle('showauto', on); flag('autoBtn', on); };
+$('envBtn').onclick = () => { const on = $('env').classList.contains('hidden'); $('env').classList.toggle('hidden', !on); flag('envBtn', on); if (on) drawEnvs(); };
+
+// ---- pattern select, length, transport extras ----
+function mkSel(grp, count, label, set) {
+  for (let j = 0; j < count; j++) {
+    const b = document.createElement('button'); b.className = 'btn'; b.id = grp + j; b.textContent = label(j); b.setAttribute('aria-pressed', 'false');
+    b.setAttribute('aria-label', grp.slice(1) + ' ' + label(j));
+    b.onclick = () => { set(j); cursor = 0; paintSteps(); save(); };
+    $(grp).appendChild(b);
+  }
+}
+mkSel('gBank', 2, (j) => ['I', 'II'][j], (j) => { S.cur = j * 16 + (S.cur % 16); });
+mkSel('gGroup', 2, (j) => 'AB'[j], (j) => { S.cur = Math.floor(S.cur / 16) * 16 + j * 8 + (S.cur % 8); });
+mkSel('gSlot', 8, (j) => String(j + 1), (j) => { S.cur = Math.floor(S.cur / 8) * 8 + j; });
+$('mode').onclick = () => { songMode = songMode === 'track' ? 'pattern' : 'track'; paintSteps(); };
+$('wmode').onclick = () => { timeMode = !timeMode; paintSteps(); };
+$('rec').onclick = () => { rec = !rec; paintSteps(); };
+function blank(gate) { S.patterns[S.cur].steps[cursor].gate = gate; cursor = (cursor + 1) % S.patterns[S.cur].len; paintSteps(); save(); }
+$('wRest').onclick = () => blank('rest');
+$('wTie').onclick = () => blank('tie');
+$('back').onclick = () => { cursor = (cursor + S.patterns[S.cur].len - 1) % S.patterns[S.cur].len; paintSteps(); };
+$('next').onclick = () => { cursor = (cursor + 1) % S.patterns[S.cur].len; paintSteps(); };
+const setLen = (d) => { const p = S.patterns[S.cur]; p.len = Math.min(T.STEPS, Math.max(1, p.len + d)); cursor = Math.min(cursor, p.len - 1); paintSteps(); save(); };
+$('lenM').onclick = () => setLen(-1); $('lenP').onclick = () => setLen(1);
+$('clear').onclick = () => { S.patterns[S.cur] = T.emptyPattern(); cursor = 0; paintSteps(); save(); };
+$('sAdd').onclick = () => { if (S.song.length < 16) S.song.push(S.cur); paintSteps(); save(); };
+$('demo').onclick = () => { T.loadDemo(S); for (const k of Object.keys(knobUI)) knobUI[k].sync(); if (ctx) { f2.Q.value = T.resQ(S.knobs.res); applyCutoff(); } cursor = 0; paintSteps(); save(); };
+$('sClr').onclick = () => { S.song = []; paintSteps(); save(); };
+$('expFiles').onclick = () => {
+  const files = T.exportFiles(S);
+  if (!files.length) { $('msg').textContent = 'nothing to export: write a note into a step first'; return; }
+  const url = URL.createObjectURL(new Blob([T.zip(files, '303-patterns')], { type: 'application/zip' }));
+  const a = document.createElement('a'); a.href = url; a.download = '303-patterns.zip'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  $('msg').textContent = 'downloaded 303-patterns.zip (' + files.length + ' files: .txt + .mid per pattern)';
+};
+$('exp').onclick = () => { $('io').value = JSON.stringify(S.patterns[S.cur]); $('msg').textContent = 'copy the JSON from the box'; };
+$('imp').onclick = () => {
+  try { S.patterns[S.cur] = T.cleanPattern(JSON.parse($('io').value)); cursor = 0; paintSteps(); save(); $('msg').textContent = 'imported'; }
+  catch (e) { $('msg').textContent = 'not valid JSON'; }
+};
+$('sync').onchange = () => { if (!$('sync').checked) run.stopAtEnd = false; };
+
+// ---- persistence: this page's own localStorage (blocked storage just means a fresh machine each visit) ----
+let saveT = null;
+function save() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => { try { localStorage.setItem('acidbass2', JSON.stringify(S)); } catch (_) { /* storage blocked */ } }, 400);
+}
+function adopt(raw) {
+  try { S = T.cleanState(raw ? JSON.parse(raw) : null); } catch (_) { S = T.newState(); }
+  setWave(S.wave); $('swing').value = Math.round(S.swing * 100);
+  for (const k of Object.keys(knobUI)) knobUI[k].sync();
+  if (ctx) { master.gain.value = S.knobs.volume; f2.Q.value = T.resQ(S.knobs.res); }
+  cursor = 0; paintSteps();
+}
+adopt(null); paintMods();
+try { const v = localStorage.getItem('acidbass2'); if (v) adopt(v); } catch (_) { /* storage blocked */ }
+</script></body></html>

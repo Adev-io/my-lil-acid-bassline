@@ -4,14 +4,27 @@ Browser instruments and tools by [A_Development](https://github.com/Adev-io). Ea
 
 | Plugin | What it is |
 |---|---|
-| [`tb303/`](tb303/) | **Acid Bass Line**: a 303-style bass synth with a 32-step sequencer, per-knob automation, and `.txt` / `.mid` export |
+| [`acid-bass-2/`](acid-bass-2/) | **Acid Bass Line 2**: the 303-style bass synth plus separate filter and amp **ADSR**, a gate-length knob and a live envelope view |
+| [`tb303/`](tb303/) | **Acid Bass Line** (v1): the original 303-style synth, one decay envelope |
 
 ## Use it
 
 - **Online:** https://adev-io.github.io/A_Development-plugins/
 - **Locally:** open `index.html` in a browser (Chrome, Edge, Firefox). Audio starts on your first click or key press.
 
-## Acid Bass Line
+## Acid Bass Line 2
+
+Everything in v1 (below), plus an **Envelope** panel:
+
+- **Filter envelope:** Attack, Decay, Sustain, Release. Env Mod is the depth; Sustain is a fraction of that depth held while the gate is up; Release returns the filter to the cutoff.
+- **Amp envelope:** Attack, Decay, Sustain, Release for the volume shape. Short decay and sustain 0 gives plucks; long attack and release gives pads.
+- **Gate length:** how much of each step the note is held, 10-100% (55% matches the original 303). It also sets the note lengths in the exported MIDI.
+- **Live view:** both envelope shapes are drawn from the current knob values.
+- **Automate** reaches every envelope knob too. Defaults reproduce v1's sound, so nothing changes until you touch them. Accent still shortens the filter decay.
+
+State is stored under its own key, so v1 and v2 never overwrite each other's patterns.
+
+## Acid Bass Line (v1)
 
 **Sound.** Saw or square oscillator into a resonant 24 dB lowpass, with Tuning, Cutoff, Resonance, Env Mod, Decay, Accent, Volume and Tempo (40-300 BPM). Accent shortens the filter decay, boosts level and builds on stacked accents. Slide glides pitch without retriggering.
 
@@ -28,10 +41,10 @@ Step notation, one token per step: `C`..`B` note, `C'` high C, `^` `_` octave up
 ## Develop
 
 ```
-bun test tb303/tb303.test.mjs      # or: node --test tb303/
+bun test                           # or: node --test
 ```
 
-The page (`tb303/index.html`) is the audio and UI. `tb303/tb303.js` is the pure half (sequencer rules, state cleaning, automation, MIDI and zip writers), tested without a browser.
+Each plugin folder is `index.html` (audio and UI) plus a pure half (`tb303/tb303.js`, `acid-bass-2/acidbass2.js`): sequencer rules, state cleaning, automation, MIDI and zip writers, tested without a browser.
 
 ## License
 
