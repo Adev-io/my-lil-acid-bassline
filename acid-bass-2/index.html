@@ -24,7 +24,8 @@
   .au input{width:36px;padding:1px;font:10px Consolas,monospace;border:1px solid #555;border-radius:2px;background:#eee;color:#111;-webkit-user-select:text;user-select:text}
   .au .rt{width:36px}.au .on{padding:0 5px;font-size:11px}
   .knob.auto{box-shadow:0 0 0 2px var(--amber),0 2px 4px #000a}
-  .panel.hidden{display:none}
+  .panel.hidden,select.hidden{display:none}
+  #midiIn{font-size:10px;max-width:150px}
   .eg{display:flex;flex-direction:column;gap:3px;min-width:0}.eg .gt{font-size:9px;letter-spacing:.14em;color:var(--amber);text-transform:uppercase}
   .krow{display:flex;gap:4px;flex-wrap:wrap}
   canvas.envc{width:100%;height:36px;background:#0d0d11;border:1px solid #333;border-radius:3px;display:block}
@@ -81,6 +82,8 @@
     <div class="grp"><span class="t">wave</span><button class="btn" id="wSaw" aria-pressed="true">Saw</button><button class="btn" id="wSq" aria-pressed="false">Square</button></div>
     <div class="grp"><span class="t">swing</span><input type="range" id="swing" min="0" max="100" value="0" aria-label="Swing"></div>
     <button class="btn" id="envBtn" aria-pressed="false" title="show the filter and amp ADSR and the gate length">Envelope</button>
+    <button class="btn" id="midiBtn" aria-pressed="false" title="play and record from a MIDI keyboard or from FL Studio through a virtual MIDI cable (Chrome / Edge)">MIDI in</button>
+    <select id="midiIn" class="hidden" aria-label="MIDI input"></select><span id="midiMsg" role="status" style="font-size:10px;color:#333"></span>
     <button class="btn" id="fxBtn" aria-pressed="false" title="show the delay: time, feedback, mix, ping-pong, fat">Delay</button>
     <button class="btn" id="autoBtn" aria-pressed="false" title="show per-knob automation: min %, max %, ~ on/off, beats per sweep">Automate</button>
     <label class="grp"><input type="checkbox" id="sync"><span class="t" style="margin:0 0 0 3px">stop at pattern end</span></label>
@@ -318,6 +321,42 @@ addEventListener('keyup', (e) => {
   if (n < 0) return;
   keyEls[n].classList.remove('down'); noteOff(n);
 });
+// ---- Web MIDI in: notes play the voice (and write steps while Write is on), velocity 110+ is an accent ----
+let midiAccess = null;
+const midiStatus = (t) => { $('midiMsg').textContent = t; };
+function midiOn(midi, vel) {
+  ensureAudio();
+  const legato = mods.slide && held.length > 0, acc = mods.accent || vel >= 110;
+  held.push(1000 + midi);   // 1000+ keeps MIDI notes apart from the on-screen key indices (0..12) in `held`
+  play({ off: false, trig: !legato, glide: legato, midi: midi + 12 * mods.oct, accent: acc, hold: true, len: 1 }, ctx.currentTime + 0.005, 0.3);
+  if (rec) { const st = T.midiToStep(midi); cursor = T.writeNote(S.patterns[S.cur], cursor, st.note, { oct: st.oct, accent: acc, slide: mods.slide }); paintSteps(); save(); }
+}
+function midiOff(midi) {
+  const i = held.lastIndexOf(1000 + midi);
+  if (i < 0) return;
+  held.splice(i, 1);
+  if (!held.length && ctx && !run.on) gateOff(ctx.currentTime + 0.01);
+}
+function onMidi(data) {
+  const m = T.parseMidi(data);
+  if (!m) return;
+  if (m.type === 'on') midiOn(m.note, m.vel); else if (m.type === 'off') midiOff(m.note); else setKnob(m.knob, m.value);
+}
+function listMidi() {
+  const sel = $('midiIn'), prev = sel.value, ins = [...midiAccess.inputs.values()];
+  sel.innerHTML = '<option value="">All inputs</option>';
+  for (const i of ins) { const o = document.createElement('option'); o.value = i.id; o.textContent = i.name; sel.appendChild(o); }
+  sel.value = ins.some((i) => i.id === prev) ? prev : '';
+  for (const i of ins) i.onmidimessage = (e) => { if (!sel.value || sel.value === i.id) onMidi(e.data); };
+  midiStatus(ins.length ? ins.length + ' input' + (ins.length > 1 ? 's' : '') + ' found' : 'no MIDI inputs found: plug one in, or create a virtual port (loopMIDI)');
+}
+$('midiBtn').onclick = async () => {
+  if (midiAccess) { const on = $('midiIn').classList.contains('hidden'); $('midiIn').classList.toggle('hidden', !on); flag('midiBtn', on); return; }
+  if (!navigator.requestMIDIAccess) { midiStatus('this browser has no Web MIDI: use Chrome or Edge'); return; }
+  try { midiAccess = await navigator.requestMIDIAccess(); } catch (e) { midiStatus('MIDI access was blocked: allow it in the site permissions'); return; }
+  midiAccess.onstatechange = listMidi;
+  $('midiIn').classList.remove('hidden'); flag('midiBtn', true); listMidi();
+};
 const flag2 = (b, on) => { b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); };
 const flag = (id, on) => { $(id).classList.toggle('on', on); $(id).setAttribute('aria-pressed', String(on)); };
 $('oUp').onclick = () => { mods.oct = mods.oct === 1 ? 0 : 1; paintMods(); };

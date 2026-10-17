@@ -280,8 +280,24 @@
     return buf;
   }
 
+  // ---- Web MIDI: raw bytes in, a small event out. Anything that is not a note or a control change is ignored. ----
+  const MIDI_CC = { 74: 'cutoff', 71: 'res', 7: 'volume' };   // the usual cutoff, resonance and channel-volume controllers
+  function parseMidi(d) {
+    if (!d || d.length < 2) return null;
+    const st = d[0] & 0xf0, a = d[1] & 0x7f, b = (d[2] || 0) & 0x7f;
+    if (st === 0x90) return b > 0 ? { type: 'on', note: a, vel: b } : { type: 'off', note: a };   // note-on with velocity 0 is note-off
+    if (st === 0x80) return { type: 'off', note: a };
+    if (st === 0xb0 && MIDI_CC[a]) return { type: 'cc', knob: MIDI_CC[a], value: b / 127 };
+    return null;
+  }
+  // A MIDI note as a step: C2 (36) is the bottom key, and the octave is held to the machine's -1..+1.
+  function midiToStep(midi) {
+    const n = Math.round(num(midi, 0, 127, 36)) - 36, o = Math.floor(n / 12);
+    return { note: n - 12 * o, oct: Math.min(1, Math.max(-1, o)) };
+  }
+
   window.TB303 = {
     NAMES, GATES, SLOTS, STEPS, KNOBS, emptyPattern, cleanPattern, cleanState, newState, midiOf, freqOf, tuneCents, bpmOf,
-    cutoffHz, resQ, delayMs, msToKnob, delayFb, DIVS, syncDiv, syncSec, knobOfSec, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, zip, crc32,
+    parseMidi, midiToStep, cutoffHz, resQ, delayMs, msToKnob, delayFb, DIVS, syncDiv, syncSec, knobOfSec, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, zip, crc32,
   };
 })();

@@ -313,3 +313,26 @@ test('tempo sync: the Time knob steps through note divisions and the seconds fol
   assert.equal(T.cleanState({ delay: { sync: true } }).delay.sync, true);
   assert.equal(T.newState().delay.sync, false, 'sync is off by default, so ms keeps working as before');
 });
+
+test('midi: note on/off (velocity 0 is off), the three controllers, and everything else ignored', () => {
+  assert.deepEqual(plain(T.parseMidi([0x90, 48, 100])), { type: 'on', note: 48, vel: 100 });
+  assert.deepEqual(plain(T.parseMidi([0x93, 60, 1])), { type: 'on', note: 60, vel: 1 }, 'any channel');
+  assert.deepEqual(plain(T.parseMidi([0x90, 48, 0])), { type: 'off', note: 48 });
+  assert.deepEqual(plain(T.parseMidi([0x80, 48, 64])), { type: 'off', note: 48 });
+  assert.deepEqual(plain(T.parseMidi([0xb0, 74, 127])), { type: 'cc', knob: 'cutoff', value: 1 });
+  assert.deepEqual(plain(T.parseMidi([0xb0, 71, 0])), { type: 'cc', knob: 'res', value: 0 });
+  assert.equal(T.parseMidi([0xb0, 7, 64]).knob, 'volume');
+  for (const ignored of [[0xb0, 1, 50], [0xe0, 0, 64], [0xf8], [0xc0, 5], [], null, undefined, [0x90]]) assert.equal(T.parseMidi(ignored), null);
+  assert.deepEqual(plain(T.parseMidi([0x190, 200, 300])), { type: 'on', note: 72, vel: 44 }, 'out-of-range bytes are masked, not trusted');
+});
+
+test('midi: a note maps onto a step, with the octave held to -1..+1', () => {
+  assert.deepEqual(plain(T.midiToStep(36)), { note: 0, oct: 0 });   // C2
+  assert.deepEqual(plain(T.midiToStep(43)), { note: 7, oct: 0 });
+  assert.deepEqual(plain(T.midiToStep(48)), { note: 0, oct: 1 });   // C3
+  assert.deepEqual(plain(T.midiToStep(35)), { note: 11, oct: -1 });
+  assert.deepEqual(plain(T.midiToStep(24)), { note: 0, oct: -1 });
+  assert.deepEqual(plain(T.midiToStep(100)), { note: 4, oct: 1 }, 'far above the range clamps to the top octave');
+  assert.deepEqual(plain(T.midiToStep(0)), { note: 0, oct: -1 });
+  assert.deepEqual(plain(T.midiToStep(NaN)), { note: 0, oct: 0 });
+});

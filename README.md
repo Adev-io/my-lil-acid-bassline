@@ -22,6 +22,8 @@ Everything in v1 (below), plus an **Envelope** panel:
 - **Live view:** both envelope shapes are drawn from the current knob values.
 - **Automate** reaches every envelope knob too. Defaults reproduce v1's sound, so nothing changes until you touch them. Accent still shortens the filter decay.
 
+**MIDI in** (press **MIDI in**, Chrome or Edge): play the synth from a MIDI keyboard, or from FL Studio through a virtual MIDI cable such as [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html). Notes play the voice and, while **Write** is on, record into the selected step; velocity 110 or more is an accent; the Slide and Up/Down buttons apply as they do for the on-screen keys. Controllers: CC74 cutoff, CC71 resonance, CC7 volume. The audio still plays from the browser, so to hear it inside FL you need a virtual audio cable too: for a proper FL instrument see the plugin in progress under `plugin/`.
+
 **Delay** (press **Delay**):
 
 - **Time** in milliseconds (20-1000, a knob or type the exact value in the ms box), **Feedback** (how many repeats), **Mix** (dry to wet; 0 is fully bypassed, which is the default).
