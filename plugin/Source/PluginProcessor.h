@@ -5,13 +5,17 @@
 #include "AcidVoice.h"
 #include "DriveStage.h"
 #include "DelayStage.h"
+#include "ReverbStage.h"
 
-class AcidBassProcessor final : public juce::AudioProcessor
+class AcidBassProcessor final : public juce::AudioProcessor, private juce::Timer
 {
 public:
     AcidBassProcessor();
+    ~AcidBassProcessor() override { stopTimer(); }
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
+    bool reverbReady() const { return reverb.ready(); }
+    void refreshReverbIR();
     void releaseResources() override {}
     bool isBusesLayoutSupported (const BusesLayout& l) const override
     {
@@ -43,10 +47,13 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     AcidParams currentParams() const;
+    void timerCallback() override { refreshReverbIR(); }
 
     AcidVoice voice;
     DriveStage drive;
     DelayStage delay;
+    ReverbStage reverb;
+    int irKey = -1;
     std::vector<float> dlyL, dlyR;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AcidBassProcessor)
 };

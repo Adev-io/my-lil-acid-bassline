@@ -285,6 +285,41 @@ int main()
         check (corr (wl, wr, (int) (0.1 * sr), (int) (1.4 * sr)) < 0.5, "full stereo ping-pong decorrelates the channels", corr (wl, wr, (int) (0.1 * sr), (int) (1.4 * sr)));
         check (corr (nl, nr, (int) (0.1 * sr), (int) (1.4 * sr)) > 0.95, "stereo 0 collapses the echoes to the centre", corr (nl, nr, (int) (0.1 * sr), (int) (1.4 * sr)));
     }
+    {   // reverb
+        auto warm = [] (AcidBassProcessor& p) {   // run blocks until the (background-loaded) impulse response is installed
+            juce::AudioBuffer<float> b (2, block); juce::MidiBuffer m;
+            for (int i = 0; i < 200 && ! p.reverbReady(); ++i) { b.clear(); p.processBlock (b, m); juce::Thread::sleep (10); }
+            // ready() turns true before the convolver has installed its later partitions (background thread): keep running silence for about 1 s
+            for (int i = 0; i < 100; ++i) { b.clear(); p.processBlock (b, m); juce::Thread::sleep (10); }
+        };
+        auto setup = [&] (bool on, float wet) {
+            auto p = make();
+            setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 3000.0f);
+            setParam (*p, "rvon", on ? 1.0f : 0.0f); setParam (*p, "rvwet", wet);
+            p->refreshReverbIR(); warm (*p);
+            return p;
+        };
+        const std::vector<Note> one = { { (int) (0.05 * sr), true, 45, 90 }, { (int) (0.15 * sr), false, 45, 0 } };
+        const int t0 = (int) (0.35 * sr), t1 = (int) (0.65 * sr);
+        auto dry = setup (false, 1.0f), off = setup (true, 0.0f), wet = setup (true, 1.0f);
+        auto a = render (*dry, 1.0, one), b = render (*off, 1.0, one), c = render (*wet, 1.0, one);
+        check (rms (a, t0, t1) < 0.001, "no tail without the reverb", rms (a, t0, t1));
+        check (rms (b, t0, t1) < 0.001, "no tail with wet at 0", rms (b, t0, t1));
+        check (rms (c, t0, t1) > 0.003 && finite (c), "a tail with wet raised", rms (c, t0, t1));
+
+        auto longP = setup (true, 1.0f), shortP = setup (true, 1.0f);
+        setParam (*longP, "rvdec", 0.9f); setParam (*shortP, "rvdec", 0.1f);
+        longP->refreshReverbIR(); shortP->refreshReverbIR(); warm (*longP); warm (*shortP);
+        auto d = render (*longP, 3.0, one), e = render (*shortP, 3.0, one);
+        check (rms (d, (int) (2.0 * sr), (int) (2.8 * sr)) > 5.0 * rms (e, (int) (2.0 * sr), (int) (2.8 * sr)) + 1e-9, "a longer decay rings longer", rms (d, (int) (2.0 * sr), (int) (2.8 * sr)));
+
+        auto wideP = setup (true, 1.0f), monoP = setup (true, 1.0f);
+        setParam (*monoP, "rvwid", 0.0f);
+        auto [wl, wr] = renderStereo (*wideP, 1.0, one);
+        auto [ml, mr] = renderStereo (*monoP, 1.0, one);
+        check (corr (ml, mr, t0, t1) > 0.99, "width 0 makes the tail mono", corr (ml, mr, t0, t1));
+        check (corr (wl, wr, t0, t1) < 0.5, "full width keeps the tail stereo", corr (wl, wr, t0, t1));
+    }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
 }

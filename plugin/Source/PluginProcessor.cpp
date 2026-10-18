@@ -5,6 +5,16 @@ AcidBassProcessor::AcidBassProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "STATE", createLayout())
 {
+    startTimerHz (4);   // the IR rebuilds at most 4 times a second, like the web page
+}
+
+void AcidBassProcessor::refreshReverbIR()
+{
+    auto v = [this] (const char* id) { return apvts.getRawParameterValue (id)->load(); };
+    const int key = (int) std::lround (v ("rvsize") * 50) * 10000 + (int) std::lround (v ("rvdec") * 50) * 100 + (int) std::lround (v ("rvdamp") * 50);   // the knobs, rounded to 1/50, as in the web page
+    if (key == irKey || getSampleRate() <= 0.0) return;
+    irKey = key;
+    reverb.loadIR (v ("rvsize"), v ("rvdec"), v ("rvdamp"));
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout AcidBassProcessor::createLayout()
@@ -29,6 +39,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidBassProcessor::createLay
     knob ("dtime", "Delay Time", 0.5f); knob ("dfb", "Delay Feedback", 0.45f); knob ("dmix", "Delay Mix", 0.0f);
     knob ("dtone", "Delay Tone", 1.0f); knob ("dwid", "Delay Stereo", 1.0f);
     l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "dpp", 1 }, "Delay Ping-Pong", true));
+    l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "rvon", 1 }, "Reverb On", false));
+    knob ("rvpre", "Reverb Pre-delay", 0.0f); knob ("rvsize", "Reverb Size", 0.5f); knob ("rvdec", "Reverb Decay", 0.5f); knob ("rvdamp", "Reverb Hi Damp", 0.5f);
+    knob ("rvlow", "Reverb Low Cut", 0.0f); knob ("rvhigh", "Reverb Hi Cut", 1.0f); knob ("rvwid", "Reverb Width", 1.0f); knob ("rvdry", "Reverb Dry", 1.0f); knob ("rvwet", "Reverb Wet", 0.0f);
     return l;
 }
 
@@ -43,11 +56,12 @@ AcidParams AcidBassProcessor::currentParams() const
     return p;
 }
 
-void AcidBassProcessor::prepareToPlay (double sampleRate, int)
+void AcidBassProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     voice.prepare (sampleRate);
     drive.prepare (sampleRate);
     delay.prepare (sampleRate);
+    reverb.prepare (sampleRate, samplesPerBlock); irKey = -1; refreshReverbIR();
 }
 
 void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -86,6 +100,12 @@ void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     delay.process (out, dlyL.data(), dlyR.data(), n, dly);
     buffer.copyFrom (0, 0, dlyL.data(), n);
     if (buffer.getNumChannels() > 1) buffer.copyFrom (1, 0, dlyR.data(), n);
+
+    ReverbParams rp;
+    rp.on = apvts.getRawParameterValue ("rvon")->load() > 0.5f;
+    rp.preK = apvts.getRawParameterValue ("rvpre")->load(); rp.lowK = apvts.getRawParameterValue ("rvlow")->load(); rp.highK = apvts.getRawParameterValue ("rvhigh")->load();
+    rp.wid = apvts.getRawParameterValue ("rvwid")->load(); rp.dry = apvts.getRawParameterValue ("rvdry")->load(); rp.wet = apvts.getRawParameterValue ("rvwet")->load();
+    if (buffer.getNumChannels() > 1) reverb.process (buffer.getWritePointer (0), buffer.getWritePointer (1), n, rp);
 }
 
 juce::AudioProcessorEditor* AcidBassProcessor::createEditor()
