@@ -77,6 +77,12 @@
   <div class="panel hidden" id="tw">
     <div class="eg"><div class="gt">Tweaks</div><div class="krow" id="twK"></div></div>
   </div>
+  <div class="panel hidden" id="dr">
+    <div class="eg"><div class="gt">Drive</div><div class="krow" id="drK"></div></div>
+    <div class="eg"><div class="gt">Mode</div>
+      <div class="krow" style="align-items:center;gap:8px"><button class="btn" id="drOn" aria-pressed="false" title="drive on or off">On</button><button class="btn" id="drSoft" aria-pressed="true">Soft</button><button class="btn" id="drTube" aria-pressed="false">Tube</button><button class="btn" id="drFold" aria-pressed="false">Fold</button></div>
+    </div>
+  </div>
   <div class="panel hidden" id="env">
     <div class="eg"><div class="gt">Filter envelope</div><div class="krow" id="envF"></div><canvas class="envc" id="cvF" aria-label="Filter envelope shape"></canvas></div>
     <div class="eg"><div class="gt">Amp envelope</div><div class="krow" id="envA"></div><canvas class="envc" id="cvA" aria-label="Amp envelope shape"></canvas></div>
@@ -90,6 +96,7 @@
     <button class="btn" id="midiBtn" aria-pressed="false" title="play and record from a MIDI keyboard or from FL Studio through a virtual MIDI cable (Chrome / Edge)">MIDI in</button>
     <select id="midiIn" class="hidden" aria-label="MIDI input"></select><span id="midiMsg" role="status" style="font-size:10px;color:#333"></span>
     <button class="btn" id="twBtn" aria-pressed="false" title="show the tweaks: high-pass, key follow, minimum decay, pulse width and its LFO">Tweaks</button>
+    <button class="btn" id="drBtn" aria-pressed="false" title="show the drive: amount, tone, type, mix">Drive</button>
     <button class="btn" id="fxBtn" aria-pressed="false" title="show the delay: time, feedback, mix, ping-pong, fat">Delay</button>
     <button class="btn" id="autoBtn" aria-pressed="false" title="show per-knob automation: min %, max %, ~ on/off, beats per sweep">Automate</button>
     <label class="grp"><input type="checkbox" id="sync"><span class="t" style="margin:0 0 0 3px">stop at pattern end</span></label>
@@ -137,7 +144,7 @@
 const $ = (id) => document.getElementById(id);
 const T = window.TB303;
 let S = T.newState();
-let ctx = null, osc, hpF, pwG, pwDly, pwLfo, pwLfoG, f1, f2, vca, master, keyMul = 1;
+let ctx = null, osc, hpF, pwG, pwDly, pwLfo, pwLfoG, f1, f2, vca, master, drFx = null, keyMul = 1;
 const mkSet = (snap) => { const now = ctx.currentTime; return (p, v) => (snap ? (p.value = v) : p.setTargetAtTime(v, now, 0.03)); };
 const mods = { oct: 0, accent: false, slide: false };   // sticky: shape live play and Write
 let cursor = 0, timeMode = false, rec = true, songMode = 'pattern';
@@ -169,10 +176,34 @@ function buildGraph(c) {
   const sh = ctx.createWaveShaper(), c2 = new Float32Array(1024);
   for (let i = 0; i < 1024; i++) c2[i] = Math.tanh((i / 511.5 - 1) * 1.6);
   sh.curve = c2;
-  sum.connect(hpF); hpF.connect(f1); f1.connect(f2); f2.connect(vca); vca.connect(master); master.connect(sh);
+  sum.connect(hpF); hpF.connect(f1); f1.connect(f2); f2.connect(vca); buildDrive(vca, master); master.connect(sh);
   buildDelay(sh);
   osc.start(); pwLfo.start();
 }
+// ---- drive: a parallel stage. dry path untouched; wet path = HP -> pre-gain -> 4x oversampled shaper -> tone -> DC block -> volume ----
+function buildDrive(src, out) {
+  const dryG = ctx.createGain(), hp = ctx.createBiquadFilter(), pre = ctx.createGain(), sh = ctx.createWaveShaper();
+  const tone = ctx.createBiquadFilter(), dc = ctx.createBiquadFilter(), vol = ctx.createGain(), wetG = ctx.createGain();
+  hp.type = 'highpass'; hp.Q.value = 0.7071; tone.type = 'lowpass'; dc.type = 'highpass'; dc.frequency.value = 20; sh.oversample = '4x';
+  src.connect(dryG); dryG.connect(out);
+  src.connect(hp); hp.connect(pre); pre.connect(sh); sh.connect(tone); tone.connect(dc); dc.connect(vol); vol.connect(wetG); wetG.connect(out);
+  drFx = { dryG, hp, pre, sh, tone, vol, wetG, type: null };
+  applyDrive(true);
+}
+function applyDrive(snap) {
+  if (!drFx) return;
+  const set = mkSet(snap), on = S.drive.on, mix = val('drmix'), db = T.drDb(val('drdrive'));
+  set(drFx.dryG.gain, on ? 1 - mix : 1); set(drFx.wetG.gain, on ? mix : 0);
+  set(drFx.hp.frequency, T.drHpHz(val('drhp'))); set(drFx.pre.gain, T.dbGain(db));
+  set(drFx.tone.frequency, T.drToneHz(val('drtone')));
+  set(drFx.vol.gain, T.dbGain(T.drVolDb(val('drvol')) + T.driveMakeupDb(db)));
+  if (drFx.type !== S.drive.type) { drFx.sh.curve = T.driveCurve(S.drive.type); drFx.type = S.drive.type; }
+}
+function paintDrive() {
+  flag('drOn', S.drive.on); flag('drSoft', S.drive.type === 'soft'); flag('drTube', S.drive.type === 'tube'); flag('drFold', S.drive.type === 'wavefold');
+  applyDrive();
+}
+
 // ---- delay: dry + a wet bus fed by either a ping-pong pair or a single (mono) line ----
 // Ping-pong: the input enters the left line, which feeds the right, which feeds the left again, so repeats alternate
 // sides every `time`. Mono: one line feeding itself, centred. Fat mode darkens (lowpass), saturates (tanh) and slowly
@@ -417,6 +448,11 @@ const KNOBDEF = [
   ['pw', 'PW', (v) => Math.round(T.pwFrac(v) * 100) + '%', 'twK'],
   ['lfor', 'LFO Rate', (v) => T.lfoHz(v).toFixed(2) + 'Hz', 'twK'],
   ['lfopw', 'LFO>PW', pc, 'twK'],
+  ['drdrive', 'Drive', (v) => '+' + T.drDb(v).toFixed(1) + 'dB', 'drK'],
+  ['drhp', 'HP', (v) => Math.round(T.drHpHz(v)) + 'Hz', 'drK'],
+  ['drtone', 'Tone', (v) => (T.drToneHz(v) / 1000).toFixed(1) + 'k', 'drK'],
+  ['drvol', 'Volume', (v) => (T.drVolDb(v) >= 0 ? '+' : '') + T.drVolDb(v).toFixed(1) + 'dB', 'drK'],
+  ['drmix', 'Mix', pc, 'drK'],
 ];
 const knobUI = {};
 function setKnob(key, v) {
@@ -427,6 +463,7 @@ function setKnob(key, v) {
   if (key === 'res') f2.Q.setTargetAtTime(T.resQ(v), now, 0.02);
   if (key === 'volume') master.gain.setTargetAtTime(v, now, 0.02);
   if (key === 'hp' || key === 'lfor') applyTweaks();
+  if (key.startsWith('dr')) applyDrive();
   if (key === 'cutoff') applyCutoff();
   if (key === 'dtime' || key === 'dfb' || key === 'dmix') applyDelay();
   if (key === 'tempo' && S.delay.sync) { applyDelay(); paintKnob('dtime'); }   // a synced echo follows the tempo knob
@@ -561,6 +598,7 @@ setInterval(() => {
   if (S.auto.res.on) f2.Q.setTargetAtTime(T.resQ(val('res')), now, 0.02);
   if (S.auto.volume.on) master.gain.setTargetAtTime(val('volume'), now, 0.02);
   if (S.auto.hp.on || S.auto.lfor.on) applyTweaks();
+  if (['drdrive', 'drhp', 'drtone', 'drvol', 'drmix'].some((n) => S.auto[n].on)) applyDrive();
   if (S.auto.cutoff.on) applyCutoff();
   if (S.auto.dtime.on || S.auto.dfb.on || S.auto.dmix.on || (S.delay.sync && S.auto.tempo.on)) applyDelay();
   if (S.delay.sync && S.auto.tempo.on && !S.auto.dtime.on) paintKnob('dtime');
@@ -568,6 +606,11 @@ setInterval(() => {
 $('autoBtn').onclick = () => { const on = !$('case').classList.contains('showauto'); $('case').classList.toggle('showauto', on); flag('autoBtn', on); };
 $('fxBtn').onclick = () => { const on = $('fx').classList.contains('hidden'); $('fx').classList.toggle('hidden', !on); flag('fxBtn', on); };
 $('twBtn').onclick = () => { const on = $('tw').classList.contains('hidden'); $('tw').classList.toggle('hidden', !on); flag('twBtn', on); };
+$('drBtn').onclick = () => { const on = $('dr').classList.contains('hidden'); $('dr').classList.toggle('hidden', !on); flag('drBtn', on); };
+$('drOn').onclick = () => { ensureAudio(); S.drive.on = !S.drive.on; paintDrive(); save(); };
+$('drSoft').onclick = () => { ensureAudio(); S.drive.type = 'soft'; paintDrive(); save(); };
+$('drTube').onclick = () => { ensureAudio(); S.drive.type = 'tube'; paintDrive(); save(); };
+$('drFold').onclick = () => { ensureAudio(); S.drive.type = 'wavefold'; paintDrive(); save(); };
 $('dPP').onclick = () => { ensureAudio(); S.delay.pp = !S.delay.pp; paintDelay(); save(); };
 $('dFat').onclick = () => { ensureAudio(); S.delay.fat = !S.delay.fat; paintDelay(); save(); };
 $('dSync').onclick = () => {
@@ -639,6 +682,7 @@ function adopt(raw) {
   setWave(S.wave); $('swing').value = Math.round(S.swing * 100);
   for (const k of Object.keys(knobUI)) knobUI[k].sync();
   paintDelay();
+  paintDrive();
   applyTweaks(true);
   if (ctx) { master.gain.value = S.knobs.volume; f2.Q.value = T.resQ(S.knobs.res); }
   cursor = 0; paintSteps();
