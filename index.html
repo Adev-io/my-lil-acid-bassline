@@ -123,7 +123,7 @@
 
   <div>
     <textarea id="io" spellcheck="false" aria-label="Pattern JSON" placeholder="Export fills this with the pattern; paste JSON here and press Import"></textarea>
-    <div class="row"><button class="btn" id="expFiles" title="make a draggable .mid for every pattern and the song">Export MIDI</button><button class="btn" id="exp">Show pattern JSON</button><button class="btn" id="imp">Import into pattern</button><span id="msg" role="status"></span></div>
+    <div class="row"><button class="btn" id="expFiles" title="make draggable .mid and .txt files for every pattern and the song">Export MIDI + TXT</button><button class="btn" id="exp">Show pattern JSON</button><button class="btn" id="imp">Import into pattern</button><span id="msg" role="status"></span></div>
     <div id="drag"></div>
   </div>
 </div>
@@ -575,16 +575,17 @@ $('demo').onclick = () => { T.loadDemo(S); for (const k of Object.keys(knobUI)) 
 $('sClr').onclick = () => { S.song = []; paintSteps(); save(); };
 // One draggable chip per .mid: drag it onto the FL Studio playlist or piano roll, or click to download it.
 $('expFiles').onclick = () => {
-  const files = T.exportFiles(S).filter((f) => f.name.endsWith('.mid'));
+  const files = T.exportFiles(S);
   if (!files.length) { $('msg').textContent = 'nothing to export: write a note into a step first'; return; }
   const box = $('drag'); box.textContent = '';
   for (const f of files) {
-    const url = URL.createObjectURL(new Blob([f.data], { type: 'audio/midi' }));
+    const type = f.name.endsWith('.mid') ? 'audio/midi' : 'text/plain';
+    const url = URL.createObjectURL(new Blob([f.data], { type }));
     const a = document.createElement('a'); a.className = 'midf'; a.textContent = f.name; a.href = url; a.download = f.name; a.draggable = true;
-    a.ondragstart = (e) => e.dataTransfer.setData('DownloadURL', 'audio/midi:' + f.name + ':' + url);
+    a.ondragstart = (e) => e.dataTransfer.setData('DownloadURL', type + ':' + f.name + ':' + url);
     box.append(a);
   }
-  $('msg').textContent = 'drag a .mid chip into FL Studio (or click it to save)';
+  $('msg').textContent = 'drag a .mid chip into FL Studio, or a .txt chip to keep the pattern (click to save)';
 };
 $('exp').onclick = () => { $('io').value = JSON.stringify(S.patterns[S.cur]); $('msg').textContent = 'copy the JSON from the box'; };
 $('imp').onclick = () => {
