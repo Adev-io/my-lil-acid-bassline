@@ -141,7 +141,7 @@
 
   <div>
     <textarea id="io" spellcheck="false" aria-label="Pattern JSON" placeholder="Export fills this with the pattern; paste JSON here and press Import"></textarea>
-    <div class="row"><button class="btn" id="expFiles" title="make draggable .mid and .txt files for every pattern and the song">Export MIDI + TXT</button><button class="btn" id="exp">Show pattern JSON</button><button class="btn" id="imp">Import into pattern</button><span id="msg" role="status"></span></div>
+    <div class="row"><input id="gTitle" type="text" maxlength="60" placeholder="groove title (file name)" aria-label="groove title, used as the export file name" style="width:11rem"><button class="btn" id="expFiles" title="make draggable .mid and .txt files for every pattern and the song">Export MIDI + TXT</button><button class="btn" id="exp">Show pattern JSON</button><button class="btn" id="imp">Import into pattern</button><span id="msg" role="status"></span></div>
     <div id="drag"></div>
   </div>
 </div>
@@ -722,8 +722,10 @@ $('sAdd').onclick = () => { if (S.song.length < 16) S.song.push(S.cur); paintSte
 $('demo').onclick = () => { T.loadDemo(S); for (const k of Object.keys(knobUI)) knobUI[k].sync(); if (ctx) { f2.Q.value = T.resQ(S.knobs.res); applyCutoff(); } cursor = 0; paintSteps(); save(); };
 $('sClr').onclick = () => { S.song = []; paintSteps(); save(); };
 // One draggable chip per .mid: drag it onto the FL Studio playlist or piano roll, or click to download it.
+try { $('gTitle').value = localStorage.getItem('acidbass2.title') || ''; } catch (e) {}
+$('gTitle').oninput = () => { try { localStorage.setItem('acidbass2.title', $('gTitle').value); } catch (e) {} };
 $('expFiles').onclick = () => {
-  const files = T.exportFiles(S);
+  const files = T.exportFiles(S, $('gTitle').value);
   if (!files.length) { $('msg').textContent = 'nothing to export: write a note into a step first'; return; }
   const box = $('drag'); box.textContent = '';
   for (const f of files) {

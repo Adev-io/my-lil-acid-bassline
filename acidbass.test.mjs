@@ -237,6 +237,15 @@ test('exportFiles writes a txt + mid per non-empty pattern and a song, and nothi
   assert.equal(T.exportFiles(null).length, 0, 'a blank or hostile state exports nothing');
 });
 
+test('exportFiles prefixes a groove title and strips characters Windows forbids', () => {
+  const s = T.loadDemo(T.newState());
+  const names = plain(T.exportFiles(s, ' Acid/Rain: v2? ').map((f) => f.name));
+  assert.ok(names.length > 0 && names.every((n) => n.startsWith('AcidRain v2 - ')), 'every file carries the cleaned title');
+  assert.deepEqual(plain(T.exportFiles(s, '').map((f) => f.name)), plain(T.exportFiles(s).map((f) => f.name)), 'blank title keeps the plain names');
+  assert.equal(T.fileTitle('a'.repeat(99)).length, 60);
+  assert.equal(T.fileTitle('...'), '');
+});
+
 test('zip: a valid store-only archive whose entries, names and CRCs read back', () => {
   const files = T.exportFiles(T.loadDemo(T.newState()));
   const z = Buffer.from(T.zip(files, '303-patterns'));

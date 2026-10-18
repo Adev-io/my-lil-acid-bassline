@@ -303,8 +303,11 @@
   const filled = (p) => p.steps.slice(0, p.len).some((s) => s.gate !== 'rest');
   const pct = (v) => Math.round(v * 100) + '%';
   // [{name, data: Uint8Array}] for every written pattern, plus song.txt / song.mid when there is a song.
-  function exportFiles(raw) {
+  // A title (optional) becomes the file-name prefix: "My groove - I-A1.mid". Characters Windows forbids are dropped.
+  const fileTitle = (t) => String(t == null ? '' : t).replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().replace(/[. ]+$/, '').slice(0, 60);
+  function exportFiles(raw, title) {
     const S = cleanState(raw);
+    const pre = fileTitle(title) ? fileTitle(title) + ' - ' : '';
     const bpm = bpmOf(S.knobs.tempo);
     const sound = Object.entries(S.knobs).map(([k, v]) => k + ' ' + pct(v)).join('  ') + '  wave ' + S.wave + '  delay ' + (S.delay.pp ? 'ping-pong' : 'mono') + (S.delay.fat ? ' fat' : '') + (S.delay.sync ? ' sync ' + syncDiv(S.knobs.dtime).name : '') + '  drive ' + (S.drive.on ? S.drive.type : 'off') + '  reverb ' + (S.reverb.on ? 'on' : 'off');
     const legend = "# notation: C..B note, C' high C, ^ _ octave up/down, * accent, ~ slide, - rest, = tie";
@@ -312,13 +315,13 @@
     S.patterns.forEach((p, i) => {
       if (!filled(p)) return;   // an untouched slot is not a pattern
       const n = slotName(i);
-      files.push({ name: n + '.txt', data: enc.encode('# ' + n + '  ' + p.len + ' steps  ' + bpm + ' bpm\n# sound: ' + sound + '\n' + legend + '\n' + formatPattern(p) + '\n') });
-      files.push({ name: n + '.mid', data: patternsToMidi([p], bpm, n, gateFrac(S.knobs.gate)) });
+      files.push({ name: pre + n + '.txt', data: enc.encode('# ' + pre + n + '  ' + p.len + ' steps  ' + bpm + ' bpm\n# sound: ' + sound + '\n' + legend + '\n' + formatPattern(p) + '\n') });
+      files.push({ name: pre + n + '.mid', data: patternsToMidi([p], bpm, n, gateFrac(S.knobs.gate)) });
     });
     const chain = S.song.filter((i) => filled(S.patterns[i]));
     if (chain.length) {
-      files.push({ name: 'song.txt', data: enc.encode('# song  ' + bpm + ' bpm\n' + chain.map(slotName).join(' ') + '\n') });
-      files.push({ name: 'song.mid', data: patternsToMidi(chain.map((i) => S.patterns[i]), bpm, 'song', gateFrac(S.knobs.gate)) });
+      files.push({ name: pre + 'song.txt', data: enc.encode('# song  ' + bpm + ' bpm\n' + chain.map(slotName).join(' ') + '\n') });
+      files.push({ name: pre + 'song.mid', data: patternsToMidi(chain.map((i) => S.patterns[i]), bpm, 'song', gateFrac(S.knobs.gate)) });
     }
     return files;
   }
@@ -364,6 +367,6 @@
   window.TB303 = {
     DRIVE_TYPES, hpHz, minDecSec, pwFrac, lfoHz, keyMul, drHpHz, drDb, drToneHz, drVolDb, dbGain, driveShape, driveCurve, driveMakeupDb, reverbIR, rvPreSec, rvDecSec, rvSizeScale, rvLowHz, rvHighHz, dToneHz,
     NAMES, GATES, SLOTS, STEPS, KNOBS, emptyPattern, cleanPattern, cleanState, newState, midiOf, freqOf, tuneCents, bpmOf,
-    parseMidi, midiToStep, cutoffHz, resQ, delayMs, msToKnob, delayFb, DIVS, syncDiv, syncSec, knobOfSec, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, zip, crc32,
+    parseMidi, midiToStep, cutoffHz, resQ, delayMs, msToKnob, delayFb, DIVS, syncDiv, syncSec, knobOfSec, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, fileTitle, zip, crc32,
   };
 })();
