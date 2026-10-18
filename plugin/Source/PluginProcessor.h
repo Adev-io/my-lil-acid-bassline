@@ -4,6 +4,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "AcidVoice.h"
 #include "DriveStage.h"
+#include "DelayStage.h"
 
 class AcidBassProcessor final : public juce::AudioProcessor
 {
@@ -25,7 +26,7 @@ public:
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.05; }
+    double getTailLengthSeconds() const override { return 8.0; }
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -45,5 +46,7 @@ private:
 
     AcidVoice voice;
     DriveStage drive;
+    DelayStage delay;
+    std::vector<float> dlyL, dlyR;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AcidBassProcessor)
 };

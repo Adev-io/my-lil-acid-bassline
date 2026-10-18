@@ -26,6 +26,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidBassProcessor::createLay
     l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "dron", 1 }, "Drive On", false));
     l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "drtype", 1 }, "Drive Type", juce::StringArray { "Soft", "Tube", "Wavefold" }, 0));
     knob ("drdrive", "Drive", 0.0f); knob ("drhp", "Drive HP", 0.0f); knob ("drtone", "Drive Tone", 1.0f); knob ("drvol", "Drive Volume", 0.5f); knob ("drmix", "Drive Mix", 1.0f);
+    knob ("dtime", "Delay Time", 0.5f); knob ("dfb", "Delay Feedback", 0.45f); knob ("dmix", "Delay Mix", 0.0f);
+    knob ("dtone", "Delay Tone", 1.0f); knob ("dwid", "Delay Stereo", 1.0f);
+    l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "dpp", 1 }, "Delay Ping-Pong", true));
     return l;
 }
 
@@ -44,6 +47,7 @@ void AcidBassProcessor::prepareToPlay (double sampleRate, int)
 {
     voice.prepare (sampleRate);
     drive.prepare (sampleRate);
+    delay.prepare (sampleRate);
 }
 
 void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -75,7 +79,13 @@ void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     drive.process (out, n, dp);
 
     for (int i = 0; i < n; ++i) out[i] = std::tanh (1.6f * out[i] * p.volume);   // master volume, then the soft clip standing in for the output stage (as on the web page)
-    for (int ch = 1; ch < buffer.getNumChannels(); ++ch) buffer.copyFrom (ch, 0, out, n);
+    if ((int) dlyL.size() < n) { dlyL.resize ((size_t) n); dlyR.resize ((size_t) n); }   // ponytail: allocates only if the host sends a bigger block than before
+    DelayParams dly;
+    dly.timeK = apvts.getRawParameterValue ("dtime")->load(); dly.fbK = apvts.getRawParameterValue ("dfb")->load(); dly.mix = apvts.getRawParameterValue ("dmix")->load();
+    dly.toneK = apvts.getRawParameterValue ("dtone")->load(); dly.wid = apvts.getRawParameterValue ("dwid")->load(); dly.pingPong = apvts.getRawParameterValue ("dpp")->load() > 0.5f;
+    delay.process (out, dlyL.data(), dlyR.data(), n, dly);
+    buffer.copyFrom (0, 0, dlyL.data(), n);
+    if (buffer.getNumChannels() > 1) buffer.copyFrom (1, 0, dlyR.data(), n);
 }
 
 juce::AudioProcessorEditor* AcidBassProcessor::createEditor()

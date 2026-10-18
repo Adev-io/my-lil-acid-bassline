@@ -24,7 +24,7 @@ juce_add_plugin(MyLilAcidBassline
     VST3_CATEGORIES Instrument Synth
     COPY_PLUGIN_AFTER_BUILD FALSE)
 
-target_sources(MyLilAcidBassline PRIVATE Source/PluginProcessor.cpp Source/PluginProcessor.h Source/AcidVoice.h Source/Maps.h Source/DriveStage.h)
+target_sources(MyLilAcidBassline PRIVATE Source/PluginProcessor.cpp Source/PluginProcessor.h Source/AcidVoice.h Source/Maps.h Source/DriveStage.h Source/DelayStage.h)
 target_include_directories(MyLilAcidBassline PUBLIC Source)
 target_compile_definitions(MyLilAcidBassline PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
 target_link_libraries(MyLilAcidBassline PRIVATE juce::juce_audio_utils juce::juce_dsp

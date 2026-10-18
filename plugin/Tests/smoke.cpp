@@ -64,6 +64,31 @@ double hz (const std::vector<float>& v, int a, int b)
 }
 bool finite (const std::vector<float>& v) { for (float x : v) if (! std::isfinite (x) || std::abs (x) > 4.0f) return false; return true; }
 
+// Same as render(), but returns the left and right channels.
+std::pair<std::vector<float>, std::vector<float>> renderStereo (AcidBassProcessor& p, double seconds, const std::vector<Note>& notes)
+{
+    std::vector<float> L, R;
+    const int total = (int) (seconds * sr);
+    for (int start = 0; start < total; start += block)
+    {
+        juce::AudioBuffer<float> buf (2, block);
+        juce::MidiBuffer midi;
+        for (const auto& n : notes)
+            if (n.at >= start && n.at < start + block)
+                midi.addEvent (n.on ? juce::MidiMessage::noteOn (1, n.note, (juce::uint8) n.vel) : juce::MidiMessage::noteOff (1, n.note), n.at - start);
+        p.processBlock (buf, midi);
+        L.insert (L.end(), buf.getReadPointer (0), buf.getReadPointer (0) + block);
+        R.insert (R.end(), buf.getReadPointer (1), buf.getReadPointer (1) + block);
+    }
+    return { L, R };
+}
+double corr (const std::vector<float>& a, const std::vector<float>& b, int x, int y)
+{
+    double ab = 0, aa = 0, bb = 0;
+    for (int i = x; i < y; ++i) { ab += (double) a[(size_t) i] * b[(size_t) i]; aa += (double) a[(size_t) i] * a[(size_t) i]; bb += (double) b[(size_t) i] * b[(size_t) i]; }
+    return ab / std::sqrt (aa * bb + 1e-20);
+}
+
 std::unique_ptr<AcidBassProcessor> make()
 {
     auto p = std::make_unique<AcidBassProcessor>();
@@ -236,6 +261,29 @@ int main()
         setParam (*hpOn, "drhp", 1.0f);
         auto x = render (*hpOff, 0.4, { { 0, true, 45, 90 } }), y = render (*hpOn, 0.4, { { 0, true, 45, 90 } });
         check (rms (y, 4000, 16000) < rms (x, 4000, 16000) * 0.8, "drive HP thins the low note", rms (y, 4000, 16000) / rms (x, 4000, 16000));
+    }
+    {   // delay
+        auto dry = make(), wetp = make();
+        for (auto* p : { dry.get(), wetp.get() }) { setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 3000.0f); }
+        setParam (*wetp, "dmix", 0.6f); setParam (*wetp, "dtime", 0.4f);   // ~ 90 ms
+        auto a = render (*dry, 1.0, { { 0, true, 45, 90 }, { (int) (0.1 * sr), false, 45, 0 } }), b = render (*wetp, 1.0, { { 0, true, 45, 90 }, { (int) (0.1 * sr), false, 45, 0 } });
+        check (rms (a, (int) (0.2 * sr), (int) (0.5 * sr)) < 0.001 && rms (b, (int) (0.2 * sr), (int) (0.5 * sr)) > 0.003, "the delay leaves echoes after the note", rms (b, (int) (0.2 * sr), (int) (0.5 * sr)));
+        check (finite (b), "delay output is finite");
+
+        auto open = make(), dark = make();
+        for (auto* p : { open.get(), dark.get() }) { setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 6000.0f); setParam (*p, "dmix", 1.0f); setParam (*p, "dtime", 0.3f); setParam (*p, "dfb", 0.8f); }
+        setParam (*dark, "dtone", 0.0f);
+        auto c = render (*open, 1.6, { { 0, true, 45, 90 }, { (int) (0.1 * sr), false, 45, 0 } }), d = render (*dark, 1.6, { { 0, true, 45, 90 }, { (int) (0.1 * sr), false, 45, 0 } });
+        const int s0 = (int) (0.6 * sr), s1 = (int) (1.5 * sr);
+        check (brightness (d, s0, s1) < brightness (c, s0, s1) * 0.7, "delay Tone darkens the repeats", brightness (d, s0, s1) / brightness (c, s0, s1));
+
+        auto wide = make(), narrow = make();
+        for (auto* p : { wide.get(), narrow.get() }) { setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 3000.0f); setParam (*p, "dmix", 1.0f); setParam (*p, "dtime", 0.3f); setParam (*p, "dfb", 0.7f); }
+        setParam (*narrow, "dwid", 0.0f);
+        auto [wl, wr] = renderStereo (*wide, 1.5, { { 0, true, 45, 90 }, { (int) (0.1 * sr), false, 45, 0 } });
+        auto [nl, nr] = renderStereo (*narrow, 1.5, { { 0, true, 45, 90 }, { (int) (0.1 * sr), false, 45, 0 } });
+        check (corr (wl, wr, (int) (0.1 * sr), (int) (1.4 * sr)) < 0.5, "full stereo ping-pong decorrelates the channels", corr (wl, wr, (int) (0.1 * sr), (int) (1.4 * sr)));
+        check (corr (nl, nr, (int) (0.1 * sr), (int) (1.4 * sr)) > 0.95, "stereo 0 collapses the echoes to the centre", corr (nl, nr, (int) (0.1 * sr), (int) (1.4 * sr)));
     }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;

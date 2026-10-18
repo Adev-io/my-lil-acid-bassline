@@ -525,7 +525,7 @@ Web reference: `buildDelay` / `applyDelay` (non-fat, non-sync): ping-pong pair o
         for (auto* p : { dry.get(), wetp.get() }) { setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 3000.0f); }
         setParam (*wetp, "dmix", 0.6f); setParam (*wetp, "dtime", 0.4f);   // ~ 90 ms
         auto a = render (*dry, 1.0, { { 0, true, 45, 90 }, { (int) (0.1 * sr), false, 45, 0 } }), b = render (*wetp, 1.0, { { 0, true, 45, 90 }, { (int) (0.1 * sr), false, 45, 0 } });
-        check (rms (a, (int) (0.4 * sr), (int) (0.9 * sr)) < 0.001 && rms (b, (int) (0.4 * sr), (int) (0.9 * sr)) > 0.003, "the delay leaves echoes after the note", rms (b, (int) (0.4 * sr), (int) (0.9 * sr)));
+        check (rms (a, (int) (0.2 * sr), (int) (0.5 * sr)) < 0.001 && rms (b, (int) (0.2 * sr), (int) (0.5 * sr)) > 0.003, "the delay leaves echoes after the note", rms (b, (int) (0.2 * sr), (int) (0.5 * sr)));
         check (finite (b), "delay output is finite");
 
         auto open = make(), dark = make();
@@ -632,7 +632,7 @@ public:
         for (int i = 0; i < n; ++i)
         {
             const float x = in[i], d = time.getNextValue();
-            const float yL = dL.popSample (0, d, false), yR = dR.popSample (0, d, false), yM = dM.popSample (0, d, false);
+            const float yL = dL.popSample (0, d), yR = dR.popSample (0, d), yM = dM.popSample (0, d);   // updateReadPointer true: one tap per line, the read head advances with the write head
             dL.pushSample (0, (p.pingPong ? x : 0.0f) + lpL.processSample (0, yR) * fb);
             dR.pushSample (0, lpR.processSample (0, yL) * fb);
             dM.pushSample (0, (p.pingPong ? 0.0f : x) + lpM.processSample (0, yM) * fb);
@@ -650,7 +650,7 @@ private:
 };
 ```
 
-In the JUCE `DelayLine`, `popSample (ch, delay, updateReadPointer)` with `updateReadPointer = false` reads without advancing; `pushSample` advances the write pointer and (per JUCE) also advances the read pointer, which is the pattern used for a fractional delay line. If the echo timing in the "delay leaves echoes" check is off, switch to the documented pop-then-push order with `updateReadPointer = true` for the pop, and re-run.
+In the JUCE `DelayLine`, `pushSample` moves only the write pointer and `popSample (ch, delay)` moves the read pointer only when `updateReadPointer` is true (its default). Use the plain `popSample (ch, delay)` for a single-tap delay line, as above. Passing `false` (multi-tap) leaves the read head fixed while the write head moves, so the echoes drift and vanish. This was measured: with `false` the wet RMS was 4e-37 (no echoes); with the default it is audible. Pop first, then push, in the same sample.
 
 - [ ] **Step 4: Wire it in.** `PluginProcessor.h`: `#include "DelayStage.h"`, members `DelayStage delay; std::vector<float> dlyL, dlyR;`. In `prepareToPlay`: `delay.prepare (sampleRate);`. In `processBlock`, after the volume/tanh loop, replace the final channel copy with:
 
@@ -776,7 +776,7 @@ public:
         for (int i = 0; i < n; ++i)
         {
             pre.pushSample (0, L[i]); pre.pushSample (1, R[i]);
-            wetL[(size_t) i] = pre.popSample (0, preS, false); wetR[(size_t) i] = pre.popSample (1, preS, false);
+            wetL[(size_t) i] = pre.popSample (0, preS); wetR[(size_t) i] = pre.popSample (1, preS);
         }
         if (ready())
         {
@@ -804,7 +804,7 @@ private:
 };
 ```
 
-Note: `pre.pushSample/popSample` here uses the same pattern as `DelayStage` (read without advancing, push advances); apply the same fix if pre-delay timing is off.
+Note: `pre.popSample` uses the default `updateReadPointer = true`, same as `DelayStage` (see the Task 4 note). Do not pass `false` here: it leaves the pre-delay read head fixed and the pre-delay drifts.
 
 - [ ] **Step 4: Processor.** `PluginProcessor.h`: `#include "ReverbStage.h"`, inherit `private juce::Timer` (`class AcidBassProcessor final : public juce::AudioProcessor, private juce::Timer`), members `ReverbStage reverb; int irKey = -1;`, public methods `bool reverbReady() const { return reverb.ready(); }` and `void refreshReverbIR();`, private `void timerCallback() override { refreshReverbIR(); }`. In `.cpp`:
 
