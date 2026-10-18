@@ -51,6 +51,10 @@ It fetches JUCE 9.0.4, builds the VST3 and a standalone app, and runs a headless
 4. **Panel:** the web page's look, as the plugin window.
 5. **Release:** installer, GitHub Release, and (optional) a code-signing certificate so Windows does not warn on install.
 
+## Known differences
+
+- The plugin's reverb tail is about 0.45x the web page's tail level for a similar note (rms 0.0051 vs 0.0114). Likely cause: `Normalise::yes` on the impulse response versus WebAudio's normalisation. Not tuned yet.
+
 ## License
 
 This folder is **AGPL-3.0-or-later** (see [LICENSE](LICENSE)), because it links the [JUCE](https://juce.com) framework under JUCE's open-source AGPLv3 option. In practice: you can use, change and share it freely, but anyone you give the plugin to must be able to get its source under the same license. Selling it as closed source would need a commercial JUCE licence instead.

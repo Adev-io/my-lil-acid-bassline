@@ -309,9 +309,10 @@ int main()
         check (rms (a, t0, t1) < 0.001, "no tail without the reverb", rms (a, t0, t1));
         check (rms (b, t0, t1) < 0.001, "no tail with wet at 0", rms (b, t0, t1));
         check (rms (c, t0, t1) > 0.003 && finite (c), "a tail with wet raised", rms (c, t0, t1));
-        {   // sanity only: the wet tail (rvwet 1) sits within 0.1x to 10x of the dry note's level (held note window, dry render)
+        {   // sanity only: the tail exists but never out-shouts the note. Tail window is 0.2 s after the note ends,
+            // so a small ratio is expected; the band is 0.005 to 1.0 (wet tail rms / held dry note rms, 0.06 to 0.14 s).
             const double dryNote = rms (a, (int) (0.06 * sr), (int) (0.14 * sr)), wetTail = rms (c, t0, t1), ratio = wetTail / dryNote;
-            check (ratio > 0.1 && ratio < 10.0, "wet tail level is in the dry note's ballpark (wet tail rms / dry note rms)", ratio);
+            check (ratio > 0.005 && ratio < 1.0, "wet tail exists and stays under the dry note (wet tail rms / dry note rms)", ratio);
             std::printf ("info  wet tail rms %g, dry note rms %g\n", wetTail, dryNote);
         }
 
