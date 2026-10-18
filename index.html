@@ -83,6 +83,12 @@
       <div class="krow" style="align-items:center;gap:8px"><button class="btn" id="drOn" aria-pressed="false" title="drive on or off">On</button><button class="btn" id="drSoft" aria-pressed="true">Soft</button><button class="btn" id="drTube" aria-pressed="false">Tube</button><button class="btn" id="drFold" aria-pressed="false">Fold</button></div>
     </div>
   </div>
+  <div class="panel hidden" id="rv">
+    <div class="eg"><div class="gt">Reverb</div><div class="krow" id="rvK"></div></div>
+    <div class="eg"><div class="gt">Mode</div>
+      <div class="krow" style="align-items:center;gap:8px"><button class="btn" id="rvOn" aria-pressed="false" title="reverb on or off">On</button></div>
+    </div>
+  </div>
   <div class="panel hidden" id="env">
     <div class="eg"><div class="gt">Filter envelope</div><div class="krow" id="envF"></div><canvas class="envc" id="cvF" aria-label="Filter envelope shape"></canvas></div>
     <div class="eg"><div class="gt">Amp envelope</div><div class="krow" id="envA"></div><canvas class="envc" id="cvA" aria-label="Amp envelope shape"></canvas></div>
@@ -97,7 +103,8 @@
     <select id="midiIn" class="hidden" aria-label="MIDI input"></select><span id="midiMsg" role="status" style="font-size:10px;color:#333"></span>
     <button class="btn" id="twBtn" aria-pressed="false" title="show the tweaks: high-pass, key follow, minimum decay, pulse width and its LFO">Tweaks</button>
     <button class="btn" id="drBtn" aria-pressed="false" title="show the drive: amount, tone, type, mix">Drive</button>
-    <button class="btn" id="fxBtn" aria-pressed="false" title="show the delay: time, feedback, mix, ping-pong, fat">Delay</button>
+    <button class="btn" id="rvBtn" aria-pressed="false" title="show the reverb">Reverb</button>
+    <button class="btn" id="fxBtn"aria-pressed="false" title="show the delay: time, feedback, mix, ping-pong, fat">Delay</button>
     <button class="btn" id="autoBtn" aria-pressed="false" title="show per-knob automation: min %, max %, ~ on/off, beats per sweep">Automate</button>
     <label class="grp"><input type="checkbox" id="sync"><span class="t" style="margin:0 0 0 3px">stop at pattern end</span></label>
   </div>
@@ -145,6 +152,7 @@ const $ = (id) => document.getElementById(id);
 const T = window.TB303;
 let S = T.newState();
 let ctx = null, osc, hpF, pwG, pwDly, pwLfo, pwLfoG, f1, f2, vca, master, drFx = null, keyMul = 1;
+let rvFx = null;
 const mkSet = (snap) => { const now = ctx.currentTime; return (p, v) => (snap ? (p.value = v) : p.setTargetAtTime(v, now, 0.03)); };
 const mods = { oct: 0, accent: false, slide: false };   // sticky: shape live play and Write
 let cursor = 0, timeMode = false, rec = true, songMode = 'pattern';
@@ -177,7 +185,7 @@ function buildGraph(c) {
   for (let i = 0; i < 1024; i++) c2[i] = Math.tanh((i / 511.5 - 1) * 1.6);
   sh.curve = c2;
   sum.connect(hpF); hpF.connect(f1); f1.connect(f2); f2.connect(vca); buildDrive(vca, master); master.connect(sh);
-  buildDelay(sh);
+  const rvIn = ctx.createGain(); buildDelay(sh, rvIn); buildReverb(rvIn, ctx.destination);
   osc.start(); pwLfo.start();
 }
 // ---- drive: a parallel stage. dry path untouched; wet path = HP -> pre-gain -> 4x oversampled shaper -> tone -> DC block -> volume ----
@@ -204,15 +212,60 @@ function paintDrive() {
   applyDrive();
 }
 
+// ---- reverb: dry + a wet bus (pre-delay -> convolver -> low cut -> high cut -> width). The impulse response is generated
+// by the core; a Size/Decay/Hi-damp change builds a fresh convolver and crossfades to it so there is no click. ----
+function buildReverb(src, out) {
+  const dryG = ctx.createGain(), pre = ctx.createDelay(0.25), lo = ctx.createBiquadFilter(), hi = ctx.createBiquadFilter();
+  const sp = ctx.createChannelSplitter(2), mg = ctx.createChannelMerger(2), wetG = ctx.createGain();
+  lo.type = 'highpass'; lo.Q.value = 0.7071; hi.type = 'lowpass'; hi.Q.value = 0.7071;
+  const mix = () => { const g = ctx.createGain(); return g; };
+  const gLL = mix(), gRR = mix(), gLR = mix(), gRL = mix();   // width: mid/side blend between the two channels
+  src.connect(dryG); dryG.connect(out);
+  src.connect(pre); lo.connect(hi); hi.connect(sp);
+  sp.connect(gLL, 0); gLL.connect(mg, 0, 0); sp.connect(gLR, 0); gLR.connect(mg, 0, 1);
+  sp.connect(gRL, 1); gRL.connect(mg, 0, 0); sp.connect(gRR, 1); gRR.connect(mg, 0, 1);
+  mg.connect(wetG); wetG.connect(out);
+  rvFx = { dryG, pre, lo, hi, wetG, gLL, gRR, gLR, gRL, conv: null, key: '', at: -1 };
+  applyReverb(true);
+}
+function loadIR(snap) {
+  const k = [val('rvsize'), val('rvdec'), val('rvdamp')], key = k.map((v) => Math.round(v * 50)).join(',');
+  if (key === rvFx.key) return;
+  const now = ctx.currentTime;
+  if (!snap && now - rvFx.at < 0.25) return;   // automation can move these 30x a second: rebuild at most 4x a second
+  rvFx.key = key; rvFx.at = now;
+  const ir = T.reverbIR(ctx.sampleRate, 1, k[0], k[1], k[2]);
+  const buf = ctx.createBuffer(2, ir.L.length, ctx.sampleRate); buf.copyToChannel(ir.L, 0); buf.copyToChannel(ir.R, 1);
+  const conv = ctx.createConvolver(), g = ctx.createGain(); conv.buffer = buf;
+  rvFx.pre.connect(conv); conv.connect(g); g.connect(rvFx.lo);
+  const old = rvFx.conv;
+  if (old && !snap) {
+    g.gain.value = 0; g.gain.setTargetAtTime(1, now, 0.02); old.g.gain.setTargetAtTime(0, now, 0.02);
+    setTimeout(() => { try { rvFx.pre.disconnect(old.conv); old.g.disconnect(); } catch (_) { /* already gone */ } }, 400);
+  } else if (old) { rvFx.pre.disconnect(old.conv); old.g.disconnect(); }
+  rvFx.conv = { conv, g };
+}
+function applyReverb(snap) {
+  if (!rvFx) return;
+  const set = mkSet(snap), on = S.reverb.on;
+  loadIR(snap);
+  set(rvFx.pre.delayTime, T.rvPreSec(val('rvpre')));
+  set(rvFx.lo.frequency, T.rvLowHz(val('rvlow'))); set(rvFx.hi.frequency, T.rvHighHz(val('rvhigh')));
+  const w = val('rvwid'), same = (1 + w) / 2, cross = (1 - w) / 2;
+  set(rvFx.gLL.gain, same); set(rvFx.gRR.gain, same); set(rvFx.gLR.gain, cross); set(rvFx.gRL.gain, cross);
+  set(rvFx.dryG.gain, on ? val('rvdry') : 1); set(rvFx.wetG.gain, on ? val('rvwet') : 0);
+}
+function paintReverb() { flag('rvOn', S.reverb.on); applyReverb(); }
+
 // ---- delay: dry + a wet bus fed by either a ping-pong pair or a single (mono) line ----
 // Ping-pong: the input enters the left line, which feeds the right, which feeds the left again, so repeats alternate
 // sides every `time`. Mono: one line feeding itself, centred. Fat mode darkens (lowpass), saturates (tanh) and slowly
 // wobbles the time (a 0.7 Hz LFO, ~2 ms deep) on every repeat, and lifts the wet level a little, for thick, tape-like echoes.
 let dry, wet, dFx = null, fatCurve = null;
-function buildDelay(src) {
+function buildDelay(src, out) {
   const mk = () => ctx.createDelay(4);   // 4 s: a half note at the slowest tempo (40 bpm) is 3 s
   dry = ctx.createGain(); wet = ctx.createGain();
-  src.connect(dry); dry.connect(ctx.destination); wet.connect(ctx.destination);
+  src.connect(dry); dry.connect(out); wet.connect(out);
   const ppIn = ctx.createGain(), moIn = ctx.createGain();
   src.connect(ppIn); src.connect(moIn);
   const dL = mk(), dR = mk(), dM = mk(), loops = [];
@@ -453,6 +506,15 @@ const KNOBDEF = [
   ['drtone', 'Tone', (v) => (T.drToneHz(v) / 1000).toFixed(1) + 'k', 'drK'],
   ['drvol', 'Volume', (v) => (T.drVolDb(v) >= 0 ? '+' : '') + T.drVolDb(v).toFixed(1) + 'dB', 'drK'],
   ['drmix', 'Mix', pc, 'drK'],
+  ['rvpre', 'Pre-delay', (v) => Math.round(T.rvPreSec(v) * 1000) + 'ms', 'rvK'],
+  ['rvsize', 'Size', pc, 'rvK'],
+  ['rvdec', 'Decay', (v) => T.rvDecSec(v).toFixed(1) + 's', 'rvK'],
+  ['rvdamp', 'Hi Damp', pc, 'rvK'],
+  ['rvlow', 'Low Cut', (v) => Math.round(T.rvLowHz(v)) + 'Hz', 'rvK'],
+  ['rvhigh', 'Hi Cut', (v) => (T.rvHighHz(v) / 1000).toFixed(1) + 'k', 'rvK'],
+  ['rvwid', 'Width', pc, 'rvK'],
+  ['rvdry', 'Dry', pc, 'rvK'],
+  ['rvwet', 'Wet', pc, 'rvK'],
 ];
 const knobUI = {};
 function setKnob(key, v) {
@@ -464,6 +526,7 @@ function setKnob(key, v) {
   if (key === 'volume') master.gain.setTargetAtTime(v, now, 0.02);
   if (key === 'hp' || key === 'lfor') applyTweaks();
   if (key.startsWith('dr')) applyDrive();
+  if (key.startsWith('rv')) applyReverb();
   if (key === 'cutoff') applyCutoff();
   if (key === 'dtime' || key === 'dfb' || key === 'dmix') applyDelay();
   if (key === 'tempo' && S.delay.sync) { applyDelay(); paintKnob('dtime'); }   // a synced echo follows the tempo knob
@@ -599,6 +662,7 @@ setInterval(() => {
   if (S.auto.volume.on) master.gain.setTargetAtTime(val('volume'), now, 0.02);
   if (S.auto.hp.on || S.auto.lfor.on) applyTweaks();
   if (['drdrive', 'drhp', 'drtone', 'drvol', 'drmix'].some((n) => S.auto[n].on)) applyDrive();
+  if (['rvpre', 'rvsize', 'rvdec', 'rvdamp', 'rvlow', 'rvhigh', 'rvwid', 'rvdry', 'rvwet'].some((n) => S.auto[n].on)) applyReverb();
   if (S.auto.cutoff.on) applyCutoff();
   if (S.auto.dtime.on || S.auto.dfb.on || S.auto.dmix.on || (S.delay.sync && S.auto.tempo.on)) applyDelay();
   if (S.delay.sync && S.auto.tempo.on && !S.auto.dtime.on) paintKnob('dtime');
@@ -607,10 +671,12 @@ $('autoBtn').onclick = () => { const on = !$('case').classList.contains('showaut
 $('fxBtn').onclick = () => { const on = $('fx').classList.contains('hidden'); $('fx').classList.toggle('hidden', !on); flag('fxBtn', on); };
 $('twBtn').onclick = () => { const on = $('tw').classList.contains('hidden'); $('tw').classList.toggle('hidden', !on); flag('twBtn', on); };
 $('drBtn').onclick = () => { const on = $('dr').classList.contains('hidden'); $('dr').classList.toggle('hidden', !on); flag('drBtn', on); };
+$('rvBtn').onclick = () => { const on = $('rv').classList.contains('hidden'); $('rv').classList.toggle('hidden', !on); flag('rvBtn', on); };
 $('drOn').onclick = () => { ensureAudio(); S.drive.on = !S.drive.on; paintDrive(); save(); };
 $('drSoft').onclick = () => { ensureAudio(); S.drive.type = 'soft'; paintDrive(); save(); };
 $('drTube').onclick = () => { ensureAudio(); S.drive.type = 'tube'; paintDrive(); save(); };
 $('drFold').onclick = () => { ensureAudio(); S.drive.type = 'wavefold'; paintDrive(); save(); };
+$('rvOn').onclick = () => { ensureAudio(); S.reverb.on = !S.reverb.on; paintReverb(); save(); };
 $('dPP').onclick = () => { ensureAudio(); S.delay.pp = !S.delay.pp; paintDelay(); save(); };
 $('dFat').onclick = () => { ensureAudio(); S.delay.fat = !S.delay.fat; paintDelay(); save(); };
 $('dSync').onclick = () => {
@@ -683,6 +749,7 @@ function adopt(raw) {
   for (const k of Object.keys(knobUI)) knobUI[k].sync();
   paintDelay();
   paintDrive();
+  paintReverb();
   applyTweaks(true);
   if (ctx) { master.gain.value = S.knobs.volume; f2.Q.value = T.resQ(S.knobs.res); }
   cursor = 0; paintSteps();

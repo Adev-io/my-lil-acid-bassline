@@ -849,11 +849,13 @@ async () => {
   const base = await h.render({ wave: 'saw', notes: [{ midi: 45, t: 0.05 }, { midi: 52, t: 0.5, accent: true }, { midi: 57, t: 0.95, glide: true, trig: false }], secs: 1.8 });
   out.bypassRatio = h.rms(base.L) / ref.saw.rms;                                       // expect 0.97..1.03
   const tailFrom = Math.floor(1.0 * h.sr);
+  // Tails are read at 0.3-0.6 s: the IR is -60 dB at its decay time (1.34 s at the default Decay), so 1.0 s is too quiet.
+  const tA = Math.floor(0.3 * h.sr), tB = Math.floor(0.6 * h.sr);
   const dryR = await h.render({ wave: 'saw', knobs: { rvwet: 0 }, reverb: { on: true }, notes, secs: 3 });
   const wetR = await h.render({ wave: 'saw', knobs: { rvwet: 1, rvdry: 0 }, reverb: { on: true }, notes, secs: 3 });
-  out.tailDry = h.rms(dryR.L, tailFrom); out.tailWet = h.rms(wetR.L, tailFrom);         // expect tailDry < 0.001, tailWet > 0.003
+  out.tailDry = h.rms(dryR.L, tA, tB); out.tailWet = h.rms(wetR.L, tA, tB);             // expect tailDry < 0.001, tailWet > 0.003
   const offR = await h.render({ wave: 'saw', knobs: { rvwet: 1 }, reverb: { on: false }, notes, secs: 3 });
-  out.tailOff = h.rms(offR.L, tailFrom);                                                // expect < 0.001
+  out.tailOff = h.rms(offR.L, tA, tB);                                                  // expect < 0.001
   const long = await h.render({ wave: 'saw', knobs: { rvwet: 1, rvdry: 0, rvdec: 1 }, reverb: { on: true }, notes, secs: 3 });
   const short = await h.render({ wave: 'saw', knobs: { rvwet: 1, rvdry: 0, rvdec: 0 }, reverb: { on: true }, notes, secs: 3 });
   const late = Math.floor(2.0 * h.sr);
