@@ -20,6 +20,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidBassProcessor::createLay
     l.add (std::make_unique<F> (juce::ParameterID { "accent", 1 }, "Accent", R (0.0f, 1.0f), 0.6f));
     l.add (std::make_unique<F> (juce::ParameterID { "volume", 1 }, "Volume", R (0.0f, 1.0f), 0.7f));
     l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "wave", 1 }, "Waveform", juce::StringArray { "Saw", "Square" }, 0));
+    auto knob = [&l] (const char* id, const char* name, float def) { l.add (std::make_unique<F> (juce::ParameterID { id, 1 }, name, R (0.0f, 1.0f), def)); };
+    knob ("hp", "HP", 0.0f); knob ("kfol", "Key Follow", 0.0f); knob ("mind", "Min Decay", 0.0f);
+    knob ("pw", "Pulse Width", 0.5f); knob ("lfor", "LFO Rate", 0.6157f); knob ("lfopw", "LFO to PW", 0.0f);
     return l;
 }
 
@@ -29,6 +32,8 @@ AcidParams AcidBassProcessor::currentParams() const
     AcidParams p;
     p.tuneCents = v ("tuning"); p.cutoffHz = v ("cutoff"); p.res = v ("res"); p.envmod = v ("envmod");
     p.decaySec = v ("decay"); p.accent = v ("accent"); p.volume = v ("volume"); p.square = v ("wave") > 0.5f;
+    p.hpHz = (float) acidmaps::hpHz (v ("hp")); p.keyFollow = v ("kfol"); p.minDecSec = (float) acidmaps::minDecSec (v ("mind"));
+    p.pw = (float) acidmaps::pwFrac (v ("pw")); p.lfoHz = (float) acidmaps::lfoHz (v ("lfor")); p.lfoPw = v ("lfopw");
     return p;
 }
 
@@ -58,6 +63,7 @@ void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     }
     if (pos < n) voice.render (out + pos, n - pos, p);
 
+    for (int i = 0; i < n; ++i) out[i] = std::tanh (1.6f * out[i] * p.volume);   // master volume, then the soft clip standing in for the output stage (as on the web page)
     for (int ch = 1; ch < buffer.getNumChannels(); ++ch) buffer.copyFrom (ch, 0, out, n);
 }
 

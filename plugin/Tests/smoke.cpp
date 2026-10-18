@@ -170,6 +170,40 @@ int main()
         const auto ir2 = reverbIR (44100.0, 1, 0.5, 0.0, 1.0);
         check (ir2.L.size() == 13230 && near (ir2.L[100], 0.0259936936, 1e-4), "IR with decay 0 and full damp matches");
     }
+    {   // tweaks
+        auto base = make();
+        setParam (*base, "envmod", 0.0f); setParam (*base, "cutoff", 4000.0f);
+        auto a = render (*base, 0.4, { { 0, true, 45, 90 } });
+        auto hp = make();
+        setParam (*hp, "envmod", 0.0f); setParam (*hp, "cutoff", 4000.0f); setParam (*hp, "hp", 1.0f);
+        auto b = render (*hp, 0.4, { { 0, true, 45, 90 } });
+        check (rms (b, 4000, 16000) < rms (a, 4000, 16000) * 0.5, "HP at max removes the bass of a low note", rms (b, 4000, 16000) / rms (a, 4000, 16000));
+
+        auto lo = make(), hi = make();
+        for (auto* p : { lo.get(), hi.get() }) { setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 300.0f); }
+        setParam (*hi, "kfol", 1.0f);
+        auto c = render (*lo, 0.4, { { 0, true, 69, 90 } }), d = render (*hi, 0.4, { { 0, true, 69, 90 } });
+        check (brightness (d, 4000, 16000) > brightness (c, 4000, 16000) * 1.2, "key follow brightens a high note", brightness (d, 4000, 16000) / brightness (c, 4000, 16000));
+
+        auto md0 = make(), md1 = make();
+        for (auto* p : { md0.get(), md1.get() }) { setParam (*p, "cutoff", 150.0f); setParam (*p, "envmod", 1.0f); setParam (*p, "decay", 0.05f); }
+        setParam (*md1, "mind", 1.0f);
+        auto e = render (*md0, 0.6, { { 0, true, 45, 90 } }), f = render (*md1, 0.6, { { 0, true, 45, 90 } });
+        check (brightness (f, 4000, 12000) > brightness (e, 4000, 12000) * 1.2, "min decay keeps the filter open longer", brightness (f, 4000, 12000) / brightness (e, 4000, 12000));
+
+        auto duty = [] (const std::vector<float>& v, int x, int y) { int pos = 0; for (int i = x; i < y; ++i) if (v[(size_t) i] > 0) ++pos; return (double) pos / (y - x); };
+        auto sq = make();
+        setParam (*sq, "wave", 1.0f); setParam (*sq, "envmod", 0.0f); setParam (*sq, "cutoff", 8000.0f);
+        auto g = render (*sq, 0.6, { { 0, true, 57, 90 } });
+        check (std::abs (duty (g, 6000, 20000) - 0.5) < 0.1, "pulse width 50 % is a square", duty (g, 6000, 20000));
+        setParam (*sq, "pw", 0.0f);   // 5 %
+        auto h = render (*sq, 0.6, { { 0, true, 57, 90 } });
+        check (std::abs (duty (h, 6000, 20000) - 0.5) > 0.25, "pulse width 5 % is a narrow pulse", duty (h, 6000, 20000));
+        auto pwm = make();
+        setParam (*pwm, "wave", 1.0f); setParam (*pwm, "lfopw", 1.0f); setParam (*pwm, "lfor", 0.8f);
+        auto m = render (*pwm, 1.0, { { 0, true, 45, 90 } });
+        check (finite (m) && rms (m, 4000, 40000) > 0.01, "LFO to pulse width stays finite and audible", rms (m, 4000, 40000));
+    }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
 }

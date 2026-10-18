@@ -4,6 +4,7 @@
 // Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see plugin/LICENSE)
 #pragma once
 #include <juce_dsp/juce_dsp.h>
+#include "Maps.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -18,6 +19,12 @@ struct AcidParams
     float volume = 0.7f;       // 0..1
     float tuneCents = 0.0f;    // +-100
     bool square = false;       // false = saw
+    float hpHz = 20.0f;        // input high-pass (20 = off)
+    float keyFollow = 0.0f;    // 0..1, how far the cutoff follows the note (C3 neutral)
+    float minDecSec = 0.03f;   // floor for the filter decay
+    float pw = 0.5f;           // pulse width fraction (square only)
+    float lfoHz = 1.0f;        // LFO rate
+    float lfoPw = 0.0f;        // 0..1, LFO depth on the pulse width
 };
 
 class AcidVoice
@@ -27,7 +34,8 @@ public:
     {
         sampleRate = sr;
         const juce::dsp::ProcessSpec spec { sr, 512u, 1u };
-        for (auto* f : { &f1, &f2 }) { f->prepare (spec); f->setType (juce::dsp::StateVariableTPTFilterType::lowpass); }
+        for (auto* f : { &f1, &f2, &hp }) { f->prepare (spec); f->setType (juce::dsp::StateVariableTPTFilterType::lowpass); }
+        hp.setType (juce::dsp::StateVariableTPTFilterType::highpass); hp.setResonance (0.7071f);
         f1.setResonance (0.5f);
         glideCoef = 1.0f - std::exp (-1.0f / (0.02f * (float) sr));   // ~60 ms to settle
         atkCoef   = 1.0f - std::exp (-1.0f / (0.001f * (float) sr));
@@ -38,7 +46,7 @@ public:
     void reset()
     {
         held.clear(); gate = false; phase = 0.0; freq = targetFreq = 110.0; ampEnv = 0.0f; filtEnv = 0.0f; sweep = 0.0f;
-        f1.reset(); f2.reset();
+        f1.reset(); f2.reset(); hp.reset(); lfoPhase = 0.0; keyMulNow = 1.0f;
     }
 
     bool active() const { return gate || ampEnv > 1.0e-4f; }
@@ -52,6 +60,7 @@ public:
         targetFreq = freqOf (note, p.tuneCents);
         accented = velocity01 >= 110.0f / 127.0f;
         if (legato) return;
+        keyMulNow = (float) acidmaps::keyMul (p.keyFollow, note);
         freq = targetFreq;
         sweep = accented ? std::min (1.0f, sweep + 0.35f) : sweep * 0.5f;
         filtEnv = 1.0f;
@@ -69,7 +78,7 @@ public:
 
     void render (float* out, int n, const AcidParams& p)
     {
-        const float decSec = accented ? std::min (p.decaySec, 0.2f) : p.decaySec;
+        const float decSec = std::max (accented ? std::min (p.decaySec, 0.2f) : p.decaySec, p.minDecSec);
         const float decCoef = std::exp (-1.0f / (std::max (decSec, 0.005f) / 3.0f * (float) sampleRate));
         const float acc = accented ? p.accent : 0.0f;
         const float oct = p.envmod * 4.5f + acc * 1.6f + sweep * p.accent * 0.8f;
@@ -77,32 +86,31 @@ public:
         const float q = 0.7f + std::pow (p.res, 1.6f) * 24.0f;
         f2.setResonance (q);
         const float maxHz = 0.45f * (float) sampleRate;
+        hp.setCutoffFrequency (std::min (p.hpHz, 0.45f * (float) sampleRate));
+        const double lfoInc = p.lfoHz / sampleRate;
 
         for (int i = 0; i < n; ++i)
         {
             if ((i & 7) == 0)   // the filter coefficients move every 8 samples: plenty for a sweep, cheap enough to run live
             {
-                const float hz = std::min (p.cutoffHz * std::pow (2.0f, oct * filtEnv), maxHz);
+                const float hz = std::min (p.cutoffHz * keyMulNow * std::pow (2.0f, oct * filtEnv), maxHz);
                 f1.setCutoffFrequency (hz); f2.setCutoffFrequency (hz);
             }
             freq += (targetFreq - freq) * (double) glideCoef;
             const double dt = freq / sampleRate;
             phase += dt; if (phase >= 1.0) phase -= 1.0;
-            float s;
+            float s = sawBlep (phase, dt);
             if (p.square)
-            {
-                s = phase < 0.5 ? 1.0f : -1.0f;
-                s += polyBlep (phase, dt);
-                s -= polyBlep (std::fmod (phase + 0.5, 1.0), dt);
+            {   // the web's pulse: the saw minus a copy of itself shifted by the width (zero-mean, narrow = skewed)
+                lfoPhase += lfoInc; if (lfoPhase >= 1.0) lfoPhase -= 1.0;
+                const double w = (double) p.pw + 0.4 * (double) p.lfoPw * std::sin (6.283185307179586 * lfoPhase);
+                double shifted = phase - w; shifted -= std::floor (shifted);
+                s -= sawBlep (shifted, dt);
             }
-            else
-            {
-                s = (float) (2.0 * phase - 1.0) - polyBlep (phase, dt);
-            }
-            s = f2.processSample (0, f1.processSample (0, s));
+            s = f2.processSample (0, f1.processSample (0, hp.processSample (0, s)));
             ampEnv += ((gate ? level : 0.0f) - ampEnv) * (gate ? atkCoef : relCoef);
             filtEnv *= decCoef;
-            out[i] = std::tanh (1.6f * s * ampEnv * p.volume);   // volume, then the soft clip that stands in for the output stage (as on the web page)
+            out[i] = s * ampEnv;   // volume and the soft clip are applied by the processor, after the drive stage
         }
     }
 
@@ -113,11 +121,12 @@ private:
         if (t > 1.0 - dt) { t = (t - 1.0) / dt; return (float) (t * t + t + t + 1.0); }
         return 0.0f;
     }
+    static float sawBlep (double t, double dt) { return (float) (2.0 * t - 1.0) - polyBlep (t, dt); }
     static double freqOf (int note, float cents) { return 440.0 * std::pow (2.0, (note - 69 + cents / 100.0) / 12.0); }
 
-    juce::dsp::StateVariableTPTFilter<float> f1, f2;
+    juce::dsp::StateVariableTPTFilter<float> f1, f2, hp;
     std::vector<int> held;
-    double sampleRate = 44100.0, phase = 0.0, freq = 110.0, targetFreq = 110.0;
-    float glideCoef = 0.0f, atkCoef = 0.0f, relCoef = 0.0f, ampEnv = 0.0f, filtEnv = 0.0f, sweep = 0.0f;
+    double sampleRate = 44100.0, phase = 0.0, freq = 110.0, targetFreq = 110.0, lfoPhase = 0.0;
+    float glideCoef = 0.0f, atkCoef = 0.0f, relCoef = 0.0f, ampEnv = 0.0f, filtEnv = 0.0f, sweep = 0.0f, keyMulNow = 1.0f;
     bool gate = false, accented = false;
 };
