@@ -128,6 +128,17 @@ int main()
         q->setStateInformation (junk, (int) sizeof (junk));
         check (std::abs (q->apvts.getRawParameterValue ("res")->load() - 0.9f) < 1e-3f, "junk state is ignored");
     }
+    {   // defaults sound as before (numbers recorded from the phase-1 plugin, before the port)
+        const double refRms[2] = { 0.231228, 0.377944 }, refBright[2] = { 0.004067, 0.002700 };
+        for (int w = 0; w < 2; ++w)
+        {
+            auto p = make();
+            setParam (*p, "wave", (float) w);
+            auto a = render (*p, 0.6, { { 0, true, 45, 90 }, { (int) (0.4 * sr), false, 45, 0 } });
+            check (std::abs (rms (a, 2000, 15000) / refRms[w] - 1.0) < 0.03, w ? "default square matches the phase-1 level" : "default saw matches the phase-1 level", rms (a, 2000, 15000));
+            check (std::abs (brightness (a, 2000, 15000) / refBright[w] - 1.0) < 0.05, w ? "default square matches the phase-1 tone" : "default saw matches the phase-1 tone", brightness (a, 2000, 15000));
+        }
+    }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
 }
