@@ -204,6 +204,39 @@ int main()
         auto m = render (*pwm, 1.0, { { 0, true, 45, 90 } });
         check (finite (m) && rms (m, 4000, 40000) > 0.01, "LFO to pulse width stays finite and audible", rms (m, 4000, 40000));
     }
+    {   // drive
+        auto off = make(), on = make();
+        for (auto* p : { off.get(), on.get() }) { setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 3000.0f); }
+        setParam (*on, "dron", 1.0f); setParam (*on, "drdrive", 1.0f);
+        auto a = render (*off, 0.5, { { 0, true, 45, 90 } }), b = render (*on, 0.5, { { 0, true, 45, 90 } });
+        check (finite (b) && rms (b, 4000, 20000) > 0.5 * rms (a, 4000, 20000) && rms (b, 4000, 20000) < 1.42 * rms (a, 4000, 20000), "drive on (full drive) stays within a level band", rms (b, 4000, 20000) / rms (a, 4000, 20000));
+        // Mid drive (0.5): the 0.5 ratio below is measured parity with the web, not a target. Only finite and loose bound required.
+        auto mid = make();
+        setParam (*mid, "envmod", 0.0f); setParam (*mid, "cutoff", 3000.0f); setParam (*mid, "dron", 1.0f); setParam (*mid, "drdrive", 0.5f);
+        auto m = render (*mid, 0.5, { { 0, true, 45, 90 } });
+        check (finite (m) && rms (m, 4000, 20000) < 2.5 * rms (a, 4000, 20000), "drive on (mid drive) stays finite and under 2.5x dry", rms (m, 4000, 20000) / rms (a, 4000, 20000));
+
+        auto knobsOffA = make(), knobsOffB = make();
+        for (auto* p : { knobsOffA.get(), knobsOffB.get() }) { setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 3000.0f); }
+        setParam (*knobsOffB, "drdrive", 1.0f); setParam (*knobsOffB, "drmix", 0.3f); setParam (*knobsOffB, "drhp", 0.7f);   // drive is off: these must not matter
+        auto c = render (*knobsOffA, 0.3, { { 0, true, 45, 90 } }), d = render (*knobsOffB, 0.3, { { 0, true, 45, 90 } });
+        double diff = 0; for (size_t i = 0; i < c.size(); ++i) diff = std::max (diff, (double) std::abs (c[i] - d[i]));
+        check (diff < 1e-6, "drive off ignores the drive knobs", diff);
+
+        auto soft = make(), tube = make(), fold = make();
+        for (auto* p : { soft.get(), tube.get(), fold.get() }) { setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 3000.0f); setParam (*p, "dron", 1.0f); setParam (*p, "drdrive", 1.0f); }
+        setParam (*tube, "drtype", 1.0f); setParam (*fold, "drtype", 2.0f);
+        auto s = render (*soft, 0.4, { { 0, true, 45, 90 } }), t = render (*tube, 0.4, { { 0, true, 45, 90 } }), w = render (*fold, 0.4, { { 0, true, 45, 90 } });
+        check (finite (s) && finite (t) && finite (w), "all three drive types stay finite");
+        double dTube = 0; for (size_t i = 4000; i < 16000; ++i) dTube += std::abs (s[i] - t[i]);
+        check (dTube > 1.0, "tube sounds different from soft", dTube);
+
+        auto hpOff = make(), hpOn = make();
+        for (auto* p : { hpOff.get(), hpOn.get() }) { setParam (*p, "envmod", 0.0f); setParam (*p, "cutoff", 3000.0f); setParam (*p, "dron", 1.0f); setParam (*p, "drdrive", 0.3f); }
+        setParam (*hpOn, "drhp", 1.0f);
+        auto x = render (*hpOff, 0.4, { { 0, true, 45, 90 } }), y = render (*hpOn, 0.4, { { 0, true, 45, 90 } });
+        check (rms (y, 4000, 16000) < rms (x, 4000, 16000) * 0.8, "drive HP thins the low note", rms (y, 4000, 16000) / rms (x, 4000, 16000));
+    }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
 }

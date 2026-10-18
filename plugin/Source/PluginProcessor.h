@@ -3,6 +3,7 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "AcidVoice.h"
+#include "DriveStage.h"
 
 class AcidBassProcessor final : public juce::AudioProcessor
 {
@@ -43,5 +44,6 @@ private:
     AcidParams currentParams() const;
 
     AcidVoice voice;
+    DriveStage drive;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AcidBassProcessor)
 };

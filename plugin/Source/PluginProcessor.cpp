@@ -23,6 +23,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidBassProcessor::createLay
     auto knob = [&l] (const char* id, const char* name, float def) { l.add (std::make_unique<F> (juce::ParameterID { id, 1 }, name, R (0.0f, 1.0f), def)); };
     knob ("hp", "HP", 0.0f); knob ("kfol", "Key Follow", 0.0f); knob ("mind", "Min Decay", 0.0f);
     knob ("pw", "Pulse Width", 0.5f); knob ("lfor", "LFO Rate", 0.6157f); knob ("lfopw", "LFO to PW", 0.0f);
+    l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "dron", 1 }, "Drive On", false));
+    l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "drtype", 1 }, "Drive Type", juce::StringArray { "Soft", "Tube", "Wavefold" }, 0));
+    knob ("drdrive", "Drive", 0.0f); knob ("drhp", "Drive HP", 0.0f); knob ("drtone", "Drive Tone", 1.0f); knob ("drvol", "Drive Volume", 0.5f); knob ("drmix", "Drive Mix", 1.0f);
     return l;
 }
 
@@ -40,6 +43,7 @@ AcidParams AcidBassProcessor::currentParams() const
 void AcidBassProcessor::prepareToPlay (double sampleRate, int)
 {
     voice.prepare (sampleRate);
+    drive.prepare (sampleRate);
 }
 
 void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -62,6 +66,13 @@ void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         else if (m.isAllNotesOff() || m.isAllSoundOff()) voice.allOff();
     }
     if (pos < n) voice.render (out + pos, n - pos, p);
+
+    DriveParams dp;
+    dp.on = apvts.getRawParameterValue ("dron")->load() > 0.5f;
+    dp.type = (acidmaps::DriveType) juce::jlimit (0, 2, (int) apvts.getRawParameterValue ("drtype")->load());
+    dp.hpK = apvts.getRawParameterValue ("drhp")->load(); dp.driveK = apvts.getRawParameterValue ("drdrive")->load();
+    dp.toneK = apvts.getRawParameterValue ("drtone")->load(); dp.volK = apvts.getRawParameterValue ("drvol")->load(); dp.mix = apvts.getRawParameterValue ("drmix")->load();
+    drive.process (out, n, dp);
 
     for (int i = 0; i < n; ++i) out[i] = std::tanh (1.6f * out[i] * p.volume);   // master volume, then the soft clip standing in for the output stage (as on the web page)
     for (int ch = 1; ch < buffer.getNumChannels(); ++ch) buffer.copyFrom (ch, 0, out, n);
