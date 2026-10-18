@@ -4,7 +4,7 @@
 
 The web version's sound as a real plugin: a monophonic acid bass instrument that plays from FL Studio's piano roll, with every knob a host parameter you can automate.
 
-**Status: phase 1.** The voice and eight parameters work, with a plain generic panel. Not yet in the plugin: the filter/amp ADSR, gate length, the delay, the 32-step sequencer and the custom panel. They come from the web version in later phases (the roadmap below).
+**Status: phase 1.** The voice, the tweaks, the drive, the delay and the reverb work, with a plain generic panel. Not yet in the plugin: the filter/amp ADSR, gate length, delay Fat and tempo Sync, presets, the 32-step sequencer and the custom panel. They come from the web version in later phases (the roadmap below).
 
 ## What works now
 
@@ -14,6 +14,18 @@ The web version's sound as a real plugin: a monophonic acid bass instrument that
 | Parameters | Tuning, Cutoff, Resonance, Env Mod, Decay, Accent, Volume, Waveform |
 | MIDI | Notes play the voice. Velocity 110 or more is an accent. A note struck while another is held **slides** to the new pitch without retriggering, so overlapping notes in the piano roll give the 303 slide. |
 | Host | Parameters are visible to FL for automation; state saves with the project |
+
+## What it has
+
+- **Voice:** the original eight controls (Tuning, Cutoff, Resonance, Env Mod, Decay, Accent, Volume, Waveform).
+- **Tweaks:** HP, Key Follow, Min Decay, Pulse Width, LFO Rate, LFO to PW.
+- **Drive:** on, type (soft, tube, wavefold), drive, HP, tone, volume, mix. Runs at 4x oversampling.
+- **Delay:** time, feedback, mix, tone, stereo, ping-pong.
+- **Reverb:** on, pre-delay, size, decay, hi damp, low cut, hi cut, width, dry, wet.
+
+All knobs are 0..1 and automatable, and they are named like the web app's knobs. The window is still the host's generic knob list, not the web page's panel.
+
+**Not in the plugin yet:** delay Fat and tempo Sync, presets, and the full filter and amp envelopes (the ADSR knobs of the web version). The window is also still the generic list.
 
 ## Build
 

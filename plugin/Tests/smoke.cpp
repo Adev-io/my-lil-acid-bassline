@@ -146,10 +146,13 @@ int main()
     {   // state round-trips, and bad state is ignored
         auto p = make();
         setParam (*p, "res", 0.9f);
+        setParam (*p, "drdrive", 0.8f); setParam (*p, "rvwet", 0.4f); setParam (*p, "dtone", 0.2f); setParam (*p, "dron", 1.0f);
         juce::MemoryBlock mb; p->getStateInformation (mb);
         auto q = make();
         q->setStateInformation (mb.getData(), (int) mb.getSize());
         check (std::abs (q->apvts.getRawParameterValue ("res")->load() - 0.9f) < 1e-3f, "saved state restores a knob", q->apvts.getRawParameterValue ("res")->load());
+        check (std::abs (q->apvts.getRawParameterValue ("drdrive")->load() - 0.8f) < 1e-3f, "saved state restores the drive knob", q->apvts.getRawParameterValue ("drdrive")->load());
+        check (std::abs (q->apvts.getRawParameterValue ("dron")->load() - 1.0f) < 1e-3f, "saved state restores the drive switch", q->apvts.getRawParameterValue ("dron")->load());
         const char junk[] = "not xml";
         q->setStateInformation (junk, (int) sizeof (junk));
         check (std::abs (q->apvts.getRawParameterValue ("res")->load() - 0.9f) < 1e-3f, "junk state is ignored");
@@ -306,6 +309,11 @@ int main()
         check (rms (a, t0, t1) < 0.001, "no tail without the reverb", rms (a, t0, t1));
         check (rms (b, t0, t1) < 0.001, "no tail with wet at 0", rms (b, t0, t1));
         check (rms (c, t0, t1) > 0.003 && finite (c), "a tail with wet raised", rms (c, t0, t1));
+        {   // sanity only: the wet tail (rvwet 1) sits within 0.1x to 10x of the dry note's level (held note window, dry render)
+            const double dryNote = rms (a, (int) (0.06 * sr), (int) (0.14 * sr)), wetTail = rms (c, t0, t1), ratio = wetTail / dryNote;
+            check (ratio > 0.1 && ratio < 10.0, "wet tail level is in the dry note's ballpark (wet tail rms / dry note rms)", ratio);
+            std::printf ("info  wet tail rms %g, dry note rms %g\n", wetTail, dryNote);
+        }
 
         auto longP = setup (true, 1.0f), shortP = setup (true, 1.0f);
         setParam (*longP, "rvdec", 0.9f); setParam (*shortP, "rvdec", 0.1f);
