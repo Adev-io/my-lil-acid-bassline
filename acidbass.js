@@ -10,6 +10,7 @@
   const SLOTS = 32;                 // 2 banks x 2 groups x 8 patterns
   const STEPS = 32;                 // a pattern holds up to 32; len says how many play, new ones start at 16
   const SONG_MAX = 16;
+  const DRIVE_TYPES = ['soft', 'tube', 'wavefold'];
   // Defaults for the envelope knobs reproduce v1's sound: instant attack, a ~0.5 s filter decay to the cutoff, the amp held
   // flat while the gate is up and cut in ~6 ms, gate 55% of a step.
   const KNOBS = {
@@ -17,6 +18,10 @@
     fatk: 0, fdec: 0.64, fsus: 0, frel: 0.68,
     aatk: 0, adec: 0.5, asus: 1, arel: 0.03,
     dtime: 0.5, dfb: 0.45, dmix: 0,   // delay: mix 0 is bypassed, so a fresh machine sounds as before
+    dtone: 1, dwid: 1,                // delay tone (1 = open) and stereo width (1 = full ping-pong)
+    hp: 0, kfol: 0, mind: 0, pw: 0.5, lfor: 0.6157, lfopw: 0,   // tweaks: every default is neutral
+    drhp: 0, drdrive: 0, drtone: 1, drvol: 0.5, drmix: 1,        // drive (off until switched on)
+    rvpre: 0, rvsize: 0.5, rvdec: 0.5, rvdamp: 0.5, rvlow: 0, rvhigh: 1, rvwid: 1, rvdry: 1, rvwet: 0,   // reverb (off, wet 0)
   };
 
   const num = (v, lo, hi, d) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
@@ -54,12 +59,16 @@
       auto[n] = { on: a.on === true, min: num(a.min, 0, 1, 0), max: num(a.max, 0, 1, 1), rate: num(a.rate, 0.25, 64, 4) };
     }
     const song = (Array.isArray(r.song) ? r.song : []).slice(0, SONG_MAX).map((i) => int(i, 0, SLOTS - 1, 0));
+    const dr = r.drive && typeof r.drive === 'object' ? r.drive : {};
+    const rv = r.reverb && typeof r.reverb === 'object' ? r.reverb : {};
     return {
       patterns: Array.from({ length: SLOTS }, (_, i) => cleanPattern(src[i])),
       knobs,
       auto,
       wave: r.wave === 'square' ? 'square' : 'saw',
       delay: { pp: (r.delay || {}).pp !== false, fat: (r.delay || {}).fat === true, sync: (r.delay || {}).sync === true },
+      drive: { on: dr.on === true, type: DRIVE_TYPES.includes(dr.type) ? dr.type : 'soft' },
+      reverb: { on: rv.on === true },
       cur: int(r.cur, 0, SLOTS - 1, 0),
       song,
       swing: num(r.swing, 0, 1, 0),
@@ -105,6 +114,25 @@
   const delayFb = (k) => 0.9 * num(k, 0, 1, 0.45);
   const gateFrac = (k) => 0.1 + 0.9 * num(k, 0, 1, 0.5);
   const stepSeconds = (bpm) => 60 / bpm / 4;
+  // Tweaks, drive, reverb and delay-tone maps. Frequencies are exponential in the knob, like the cutoff.
+  const k01 = (k, d) => num(k, 0, 1, d);
+  const hpHz = (k) => 20 * Math.pow(25, k01(k, 0));                 // 20 Hz .. 500 Hz
+  const minDecSec = (k) => 0.03 * Math.pow(20, k01(k, 0));          // 30 ms .. 0.6 s
+  const pwFrac = (k) => 0.05 + 0.9 * k01(k, 0.5);                   // 5 % .. 95 %
+  const lfoHz = (k) => 0.05 * Math.pow(400, k01(k, 0.6157));        // 0.05 Hz .. 20 Hz
+  // Key follow: at 100 % the cutoff moves an octave per octave of pitch, with C3 (MIDI 48) as the neutral note.
+  const keyMul = (k, midi) => Math.pow(2, k01(k, 0) * (midi - 48) / 12);
+  const drHpHz = (k) => 20 * Math.pow(40, k01(k, 0));               // 20 Hz .. 800 Hz
+  const drDb = (k) => 30 * k01(k, 0);                               // 0 .. 30 dB of drive
+  const drToneHz = (k) => 800 * Math.pow(20, k01(k, 1));            // 0.8 .. 16 kHz
+  const drVolDb = (k) => (k01(k, 0.5) - 0.5) * 24;                  // +-12 dB
+  const dbGain = (db) => Math.pow(10, db / 20);
+  const rvPreSec = (k) => 0.2 * k01(k, 0);                          // 0 .. 200 ms
+  const rvDecSec = (k) => 0.3 * Math.pow(20, k01(k, 0.5));          // 0.3 .. 6 s
+  const rvSizeScale = (k) => 0.5 + k01(k, 0.5);                     // 0.5 .. 1.5, stretches the build-up
+  const rvLowHz = (k) => 20 * Math.pow(25, k01(k, 0));              // 20 .. 500 Hz
+  const rvHighHz = (k) => 1000 * Math.pow(20, k01(k, 1));           // 1 .. 20 kHz
+  const dToneHz = (k) => 400 * Math.pow(50, k01(k, 1));             // 0.4 .. 20 kHz
 
   // What one step does, given the step before and after it (patterns wrap, as the machine's does).
   //   trig    start a fresh envelope; false = legato (slid into, or tied)
@@ -297,6 +325,7 @@
   }
 
   window.TB303 = {
+    DRIVE_TYPES, hpHz, minDecSec, pwFrac, lfoHz, keyMul, drHpHz, drDb, drToneHz, drVolDb, dbGain, rvPreSec, rvDecSec, rvSizeScale, rvLowHz, rvHighHz, dToneHz,
     NAMES, GATES, SLOTS, STEPS, KNOBS, emptyPattern, cleanPattern, cleanState, newState, midiOf, freqOf, tuneCents, bpmOf,
     parseMidi, midiToStep, cutoffHz, resQ, delayMs, msToKnob, delayFb, DIVS, syncDiv, syncSec, knobOfSec, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, zip, crc32,
   };

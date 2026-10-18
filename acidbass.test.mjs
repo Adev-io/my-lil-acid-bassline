@@ -336,3 +336,55 @@ test('midi: a note maps onto a step, with the octave held to -1..+1', () => {
   assert.deepEqual(plain(T.midiToStep(0)), { note: 0, oct: -1 });
   assert.deepEqual(plain(T.midiToStep(NaN)), { note: 0, oct: 0 });
 });
+
+test('new knob defaults keep today\'s sound', () => {
+  const T = load();
+  assert.equal(T.hpHz(T.KNOBS.hp), 20);
+  assert.equal(T.keyMul(T.KNOBS.kfol, 72), 1);
+  assert.equal(T.minDecSec(T.KNOBS.mind), 0.03);
+  assert.equal(T.pwFrac(T.KNOBS.pw), 0.5);
+  assert.ok(Math.abs(T.lfoHz(T.KNOBS.lfor) - 2) < 0.01);
+  assert.equal(T.drDb(T.KNOBS.drdrive), 0);
+  assert.equal(T.drVolDb(T.KNOBS.drvol), 0);
+  assert.equal(T.drToneHz(T.KNOBS.drtone), 16000);
+  assert.equal(T.rvHighHz(T.KNOBS.rvhigh), 20000);
+  assert.equal(T.dToneHz(T.KNOBS.dtone), 20000);
+  assert.equal(T.KNOBS.rvwet, 0);
+});
+
+test('knob maps hit their documented ends', () => {
+  const T = load();
+  assert.equal(T.hpHz(1), 500);
+  assert.ok(Math.abs(T.minDecSec(1) - 0.6) < 1e-9);
+  assert.ok(Math.abs(T.pwFrac(0) - 0.05) < 1e-9 && Math.abs(T.pwFrac(1) - 0.95) < 1e-9);
+  assert.ok(Math.abs(T.lfoHz(0) - 0.05) < 1e-9 && Math.abs(T.lfoHz(1) - 20) < 1e-9);
+  assert.equal(T.drDb(1), 30);
+  assert.equal(T.drVolDb(0), -12); assert.equal(T.drVolDb(1), 12);
+  assert.equal(T.drHpHz(1), 800);
+  assert.ok(Math.abs(T.rvDecSec(0) - 0.3) < 1e-9 && Math.abs(T.rvDecSec(1) - 6) < 1e-9);
+  assert.ok(Math.abs(T.rvPreSec(1) - 0.2) < 1e-9);
+  assert.equal(T.rvLowHz(1), 500);
+  assert.ok(Math.abs(T.dbGain(6.0206) - 2) < 1e-3);
+});
+
+test('key follow: 100 percent tracks pitch octave for octave around C3', () => {
+  const T = load();
+  assert.equal(T.keyMul(1, 48), 1);
+  assert.equal(T.keyMul(1, 60), 2);
+  assert.equal(T.keyMul(1, 36), 0.5);
+  assert.ok(Math.abs(T.keyMul(0.5, 60) - Math.SQRT2) < 1e-9);
+});
+
+test('state: drive and reverb switches clean, old saves open neutral', () => {
+  const T = load();
+  const plain = (x) => JSON.parse(JSON.stringify(x));
+  const s = plain(T.cleanState({ drive: { on: true, type: 'tube' }, reverb: { on: true } }));
+  assert.deepEqual(s.drive, { on: true, type: 'tube' });
+  assert.deepEqual(s.reverb, { on: true });
+  assert.deepEqual(plain(T.cleanState({ drive: { on: 'yes', type: 'fuzz' } }).drive), { on: false, type: 'soft' });
+  const old = plain(T.cleanState({ knobs: { cutoff: 0.3 } }));
+  assert.equal(old.knobs.cutoff, 0.3);
+  assert.equal(old.knobs.rvwet, 0);
+  assert.deepEqual(old.drive, { on: false, type: 'soft' });
+  assert.equal(Object.keys(old.auto).length, Object.keys(T.KNOBS).length);
+});
