@@ -284,6 +284,7 @@ function buildDelay(src, out) {
   // Unity slope near zero: the curve squashes peaks and adds harmonics but never adds gain, so repeats still die away.
   if (!fatCurve) { fatCurve = new Float32Array(1024); for (let k = 0; k < 1024; k++) fatCurve[k] = Math.tanh((k / 511.5 - 1) * 2.2) / 2.2; }
   dFx = { ppIn, moIn, dL, dR, dM, loops, lfoG, fat: null };
+  dFx.pl = pl; dFx.pr = pr;
   applyDelay(true);
 }
 // snap = true sets values outright (graph build, offline checks); otherwise they glide, so a twist never clicks.
@@ -295,7 +296,9 @@ function applyDelay(snap) {
   const sec = delaySec(), fb = T.delayFb(val('dfb')), mix = val('dmix'), fat = S.delay.fat;
   for (const d of [dFx.dL, dFx.dR, dFx.dM]) set(d.delayTime, sec);
   set(dFx.ppIn.gain, S.delay.pp ? 1 : 0); set(dFx.moIn.gain, S.delay.pp ? 0 : 1);
-  for (const l of dFx.loops) { set(l.g.gain, fb); set(l.lp.frequency, fat ? 2600 : 20000); }
+  const tone = T.dToneHz(val('dtone'));
+  for (const l of dFx.loops) { set(l.g.gain, fb); set(l.lp.frequency, Math.min(tone, fat ? 2600 : 20000)); }
+  const wid = val('dwid'); set(dFx.pl.pan, -wid); set(dFx.pr.pan, wid);
   if (dFx.fat !== fat) { for (const l of dFx.loops) l.sat.curve = fat ? fatCurve : null; dFx.fat = fat; }
   set(dFx.lfoG.gain, fat ? 0.002 : 0);
   set(dry.gain, Math.cos(mix * Math.PI / 2)); set(wet.gain, Math.sin(mix * Math.PI / 2) * (fat ? 1.25 : 1));   // equal-power crossfade
@@ -495,6 +498,8 @@ const KNOBDEF = [
   ['dtime', 'Time', (v) => (S.delay.sync ? T.syncDiv(v).name : Math.round(T.delayMs(v)) + 'ms'), 'fxK'],
   ['dfb', 'Feedback', (v) => pc(T.delayFb(v)), 'fxK'],
   ['dmix', 'Mix', pc, 'fxK'],
+  ['dtone', 'Tone', (v) => (T.dToneHz(v) / 1000).toFixed(1) + 'k', 'fxK'],
+  ['dwid', 'Stereo', pc, 'fxK'],
   ['hp', 'HP', (v) => Math.round(T.hpHz(v)) + 'Hz', 'twK'],
   ['kfol', 'Key Follow', pc, 'twK'],
   ['mind', 'Min Decay', (v) => ms(T.minDecSec(v)), 'twK'],
@@ -528,7 +533,7 @@ function setKnob(key, v) {
   if (key.startsWith('dr')) applyDrive();
   if (key.startsWith('rv')) applyReverb();
   if (key === 'cutoff') applyCutoff();
-  if (key === 'dtime' || key === 'dfb' || key === 'dmix') applyDelay();
+  if (key === 'dtime' || key === 'dfb' || key === 'dmix' || key === 'dtone' || key === 'dwid') applyDelay();
   if (key === 'tempo' && S.delay.sync) { applyDelay(); paintKnob('dtime'); }   // a synced echo follows the tempo knob
 }
 // The envelope decays toward the cutoff knob, so a held note or a running line follows a twist at once. It
@@ -664,7 +669,7 @@ setInterval(() => {
   if (['drdrive', 'drhp', 'drtone', 'drvol', 'drmix'].some((n) => S.auto[n].on)) applyDrive();
   if (['rvpre', 'rvsize', 'rvdec', 'rvdamp', 'rvlow', 'rvhigh', 'rvwid', 'rvdry', 'rvwet'].some((n) => S.auto[n].on)) applyReverb();
   if (S.auto.cutoff.on) applyCutoff();
-  if (S.auto.dtime.on || S.auto.dfb.on || S.auto.dmix.on || (S.delay.sync && S.auto.tempo.on)) applyDelay();
+  if (S.auto.dtime.on || S.auto.dfb.on || S.auto.dmix.on || S.auto.dtone.on || S.auto.dwid.on || (S.delay.sync && S.auto.tempo.on)) applyDelay();
   if (S.delay.sync && S.auto.tempo.on && !S.auto.dtime.on) paintKnob('dtime');
 }, 33);
 $('autoBtn').onclick = () => { const on = !$('case').classList.contains('showauto'); $('case').classList.toggle('showauto', on); flag('autoBtn', on); };

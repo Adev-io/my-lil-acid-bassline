@@ -922,7 +922,10 @@ async () => {
   out.defaultsRatio = h.rms(d.L) / ref.delay.rms;                                       // expect 0.97..1.03
   const open = await h.render({ wave: 'saw', knobs: { dmix: 1, dtone: 1, dtime: 0.3 }, notes: [{ midi: 57, t: 0.05, accent: true }], secs: 1.5 });
   const dark = await h.render({ wave: 'saw', knobs: { dmix: 1, dtone: 0, dtime: 0.3 }, notes: [{ midi: 57, t: 0.05, accent: true }], secs: 1.5 });
-  out.toneBright = h.bright(dark.L) / h.bright(open.L);                                 // expect < 0.7
+  // Tone is a lowpass in the feedback repeats only (the first echo is a direct tap, unfiltered by design),
+  // so compare the repeats window 0.65-1.5 s; the whole buffer would be dominated by the first echo.
+  const sr = 44100, a = Math.floor(0.65 * sr), b = Math.floor(1.5 * sr);
+  out.toneBright = h.bright(dark.L, a, b) / h.bright(open.L, a, b);                     // expect < 0.7
   const wide = await h.render({ wave: 'saw', knobs: { dmix: 1, dwid: 1, dtime: 0.3 }, delay: { pp: true }, notes: [{ midi: 57, t: 0.05 }], secs: 1.5 });
   const narrow = await h.render({ wave: 'saw', knobs: { dmix: 1, dwid: 0, dtime: 0.3 }, delay: { pp: true }, notes: [{ midi: 57, t: 0.05 }], secs: 1.5 });
   out.wideCorr = h.corr(wide.L, wide.R); out.narrowCorr = h.corr(narrow.L, narrow.R);   // expect wideCorr < 0.5, narrowCorr > 0.95
