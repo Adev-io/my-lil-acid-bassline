@@ -1,0 +1,9 @@
+{
+  "name": "my-lil-acid-bass-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Desktop window for My lil acid bass, by A_Development",
+  "main": "main.js",
+  "scripts": { "start": "electron ." },
+  "devDependencies": { "electron": "^33.0.0" }
+}
