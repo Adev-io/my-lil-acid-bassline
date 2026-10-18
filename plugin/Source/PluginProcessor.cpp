@@ -1,5 +1,8 @@
 // Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see plugin/LICENSE)
 #include "PluginProcessor.h"
+#if JUCE_WEB_BROWSER
+#include "Editor.h"
+#endif
 
 AcidBassProcessor::AcidBassProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
@@ -110,7 +113,11 @@ void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
 
 juce::AudioProcessorEditor* AcidBassProcessor::createEditor()
 {
-    return new juce::GenericAudioProcessorEditor (*this);   // phase 1: the host-style list of knobs; the real panel comes later
+#if JUCE_WEB_BROWSER
+    return new AcidEditor (*this);
+#else
+    return new juce::GenericAudioProcessorEditor (*this);   // the headless test build has no web view
+#endif
 }
 
 void AcidBassProcessor::getStateInformation (juce::MemoryBlock& dest)

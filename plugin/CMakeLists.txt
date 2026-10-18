@@ -20,14 +20,20 @@ juce_add_plugin(MyLilAcidBassline
     IS_SYNTH TRUE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
+    NEEDS_WEBVIEW2 TRUE
     PRODUCT_NAME "My lil acid bassline"
     VST3_CATEGORIES Instrument Synth
     COPY_PLUGIN_AFTER_BUILD FALSE)
 
-target_sources(MyLilAcidBassline PRIVATE Source/PluginProcessor.cpp Source/PluginProcessor.h Source/AcidVoice.h Source/Maps.h Source/DriveStage.h Source/DelayStage.h Source/ReverbStage.h)
+# The window is the web page itself: the same index.html, acidbass.js and ui-bridge.js the web version ships.
+juce_add_binary_data(AcidUi HEADER_NAME "AcidUiData.h" NAMESPACE AcidUi SOURCES
+    ../index.html ../acidbass.js ../ui-bridge.js ui/juce-frontend.js)
+
+target_sources(MyLilAcidBassline PRIVATE Source/PluginProcessor.cpp Source/PluginProcessor.h Source/AcidVoice.h Source/Maps.h Source/DriveStage.h Source/DelayStage.h Source/ReverbStage.h
+    Source/ParamBridge.h Source/Editor.h Source/Editor.cpp)
 target_include_directories(MyLilAcidBassline PUBLIC Source)
-target_compile_definitions(MyLilAcidBassline PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
-target_link_libraries(MyLilAcidBassline PRIVATE juce::juce_audio_utils juce::juce_dsp
+target_compile_definitions(MyLilAcidBassline PUBLIC JUCE_WEB_BROWSER=1 JUCE_USE_WIN_WEBVIEW2_WITH_STATIC_LINKING=1 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0)
+target_link_libraries(MyLilAcidBassline PRIVATE AcidUi juce::juce_audio_utils juce::juce_dsp
     PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 
 # A headless smoke test: drives the real processor with MIDI and checks what comes out (no host needed).
