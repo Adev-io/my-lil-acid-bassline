@@ -134,6 +134,43 @@
   const rvHighHz = (k) => 1000 * Math.pow(20, k01(k, 1));           // 1 .. 20 kHz
   const dToneHz = (k) => 400 * Math.pow(50, k01(k, 1));             // 0.4 .. 20 kHz
 
+  // ---- drive curves: a lookup table over input -1..1, which stands for -DRIVE_RANGE..+DRIVE_RANGE in shape units ----
+  const DRIVE_RANGE = 1.5;
+  function driveShape(type, x) {
+    if (type === 'tube') return Math.tanh(x + 0.35) - Math.tanh(0.35);   // biased tanh: asymmetric, even harmonics, zero at zero
+    if (type === 'wavefold') return Math.sin(x * 1.3);                   // folds back over itself once the input is big
+    return Math.tanh(x);
+  }
+  function driveCurve(type, n) {
+    const len = n || 2048, c = new Float32Array(len);
+    for (let i = 0; i < len; i++) c[i] = driveShape(type, DRIVE_RANGE * (2 * i / (len - 1) - 1));
+    return c;
+  }
+  // Level compensation: take back 40 % of the drive in dB, so full drive is not much louder than bypass. Tuned by ear
+  // and checked by the render test in the plan; change the 0.4 only together with that check.
+  const driveMakeupDb = (db) => 0 - 0.4 * db;   // "0 -" keeps zero drive at +0, not -0
+
+  // ---- reverb impulse response: seeded noise, exponential decay (-60 dB at the decay time), a fade-in set by Size, and a
+  // one-pole lowpass that closes as the tail ages (Hi damp). Same seed in, same samples out, so tests and the plugin agree. ----
+  function rng(seed) {
+    let a = seed >>> 0;
+    return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  function reverbIR(sr, seed, size, decay, damp) {
+    const rt = rvDecSec(decay), len = Math.min(Math.ceil(sr * rt), sr * 7), fade = 0.005 + 0.04 * k01(size, 0.5), dm = k01(damp, 0.5);
+    const out = { L: new Float32Array(len), R: new Float32Array(len) };
+    ['L', 'R'].forEach((ch, c) => {
+      const r = rng(seed * 2 + c); let y = 0;
+      for (let i = 0; i < len; i++) {
+        const t = i / sr, env = Math.exp(-6.9 * t / rt) * Math.min(1, t / fade);
+        const a = 1 - dm * 0.9 * (1 - Math.exp(-4 * t / rt));   // 1 = open, closing toward 0.1 as the tail ages
+        y += a * ((r() * 2 - 1) * env - y);
+        out[ch][i] = y;
+      }
+    });
+    return out;
+  }
+
   // What one step does, given the step before and after it (patterns wrap, as the machine's does).
   //   trig    start a fresh envelope; false = legato (slid into, or tied)
   //   glide   a note that was slid into: pitch moves, the envelope does not restart
@@ -325,7 +362,7 @@
   }
 
   window.TB303 = {
-    DRIVE_TYPES, hpHz, minDecSec, pwFrac, lfoHz, keyMul, drHpHz, drDb, drToneHz, drVolDb, dbGain, rvPreSec, rvDecSec, rvSizeScale, rvLowHz, rvHighHz, dToneHz,
+    DRIVE_TYPES, hpHz, minDecSec, pwFrac, lfoHz, keyMul, drHpHz, drDb, drToneHz, drVolDb, dbGain, driveShape, driveCurve, driveMakeupDb, reverbIR, rvPreSec, rvDecSec, rvSizeScale, rvLowHz, rvHighHz, dToneHz,
     NAMES, GATES, SLOTS, STEPS, KNOBS, emptyPattern, cleanPattern, cleanState, newState, midiOf, freqOf, tuneCents, bpmOf,
     parseMidi, midiToStep, cutoffHz, resQ, delayMs, msToKnob, delayFb, DIVS, syncDiv, syncSec, knobOfSec, atkSec, decSec, relSec, gateFrac, stepSeconds, stepEvent, autoValue, writeNote, cycleGate, cycleOct, nextSlot, slotName, parsePattern, loadDemo, formatPattern, patternsToMidi, exportFiles, zip, crc32,
   };

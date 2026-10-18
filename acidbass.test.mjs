@@ -388,3 +388,51 @@ test('state: drive and reverb switches clean, old saves open neutral', () => {
   assert.deepEqual(old.drive, { on: false, type: 'soft' });
   assert.equal(Object.keys(old.auto).length, Object.keys(T.KNOBS).length);
 });
+
+test('drive shapes are bounded; tube is asymmetric, soft is odd', () => {
+  const T = load();
+  for (const type of T.DRIVE_TYPES) {
+    const c = T.driveCurve(type);
+    assert.equal(c.length, 2048);
+    for (const v of c) assert.ok(Math.abs(v) <= 1.4 && Number.isFinite(v), type);
+    assert.ok(Math.abs(c[1023] + c[1024]) < 0.01 || type === 'tube' || type === 'wavefold');   // near the middle: no jump
+  }
+  const soft = T.driveCurve('soft'), tube = T.driveCurve('tube');
+  assert.ok(Math.abs(soft[300] + soft[2047 - 300]) < 1e-6);        // odd symmetry
+  assert.ok(Math.abs(tube[300] + tube[2047 - 300]) > 0.05);        // asymmetric
+  assert.ok(Math.abs(T.driveCurve('nonsense')[10] - soft[10]) < 1e-12);   // unknown type = soft
+});
+
+test('wavefold folds back: output is not monotonic', () => {
+  const T = load();
+  const c = T.driveCurve('wavefold');
+  let up = 0, down = 0;
+  for (let i = 1; i < c.length; i++) { if (c[i] > c[i - 1]) up++; else if (c[i] < c[i - 1]) down++; }
+  assert.ok(up > 0 && down > 0);
+});
+
+test('drive makeup gain only ever turns the level down as drive rises', () => {
+  const T = load();
+  assert.equal(T.driveMakeupDb(0), 0);
+  assert.ok(T.driveMakeupDb(30) < T.driveMakeupDb(10) && T.driveMakeupDb(10) < 0);
+});
+
+test('reverb IR: repeatable, seeded, decaying, damp darkens it', () => {
+  const T = load();
+  const a = T.reverbIR(8000, 1, 0.5, 0.5, 0.5), b = T.reverbIR(8000, 1, 0.5, 0.5, 0.5), c = T.reverbIR(8000, 2, 0.5, 0.5, 0.5);
+  assert.equal(a.L.length, b.L.length);
+  assert.ok(a.L.every((v, i) => v === b.L[i] && a.R[i] === b.R[i]));
+  assert.ok(a.L.some((v, i) => v !== c.L[i]));
+  assert.notDeepEqual(Array.from(a.L.slice(0, 50)), Array.from(a.R.slice(0, 50)));   // two channels are decorrelated
+  const rms = (x, lo, hi) => Math.sqrt(x.slice(Math.floor(x.length * lo), Math.floor(x.length * hi)).reduce((s, v) => s + v * v, 0) / (x.length * (hi - lo)));
+  assert.ok(rms(a.L, 0.1, 0.3) > 3 * rms(a.L, 0.7, 0.9));
+  const hf = (x) => { let d = 0, e = 1e-12; for (let i = 1; i < x.length; i++) { d += (x[i] - x[i - 1]) ** 2; e += x[i] ** 2; } return d / e; };
+  const bright = T.reverbIR(8000, 1, 0.5, 0.5, 0), dark = T.reverbIR(8000, 1, 0.5, 0.5, 1);
+  assert.ok(hf(dark.L) < 0.9 * hf(bright.L));
+  assert.ok(a.L.length <= 8000 * 7);
+});
+
+test('reverb IR length follows the decay knob', () => {
+  const T = load();
+  assert.ok(T.reverbIR(8000, 1, 0.5, 1, 0.5).L.length > 4 * T.reverbIR(8000, 1, 0.5, 0, 0.5).L.length);
+});
