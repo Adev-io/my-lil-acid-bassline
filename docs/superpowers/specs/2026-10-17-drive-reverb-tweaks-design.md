@@ -29,7 +29,7 @@ Every continuous knob joins the existing Automate row (min, max, rate). On/off s
 
 `oscillator -> HP -> 24 dB lowpass -> amp -> Drive -> output clip -> Delay -> Reverb`
 
-- **Oscillator:** pulse width and the LFO need a custom oscillator. Replace the built-in saw/square with a small AudioWorklet (PolyBLEP, same maths as the plugin's C++ voice). If AudioWorklet is missing, fall back to the built-in oscillator and grey out PW and LFO with a note.
+- **Oscillator:** pulse width is the built-in sawtooth minus a copy of itself delayed by `pw / frequency` (a `DelayNode`); the LFO adds to that delay. Saw mode mutes the delayed copy. No AudioWorklet is needed, so there is no fallback and it works from `file://`.
 - **Key Follow and Min Decay:** applied per note where the envelopes are set today. Min Decay also floors the accent decay.
 - **Drive:** HP, pre-gain, 4x-oversampled waveshaper (soft: tanh; tube: asymmetric; wavefold), Tone, Volume, parallel Mix. Level compensated so full drive is at most about 3 dB louder than bypass.
 - **Reverb:** a seeded, generated stereo impulse response in a ConvolverNode, then pre-delay, low cut, high cut and width. A change to Size, Decay or Hi damp rebuilds it with a short crossfade (no click). The plugin uses the same recipe, so tails match in character, not bit for bit.
@@ -60,7 +60,7 @@ Phase 2 ports the Tweaks and Drive (same maps and golden values), using `juce::R
 ## Order of work
 
 1. Pure maths and state in `acidbass.js` with node tests.
-2. AudioWorklet oscillator and Tweaks panel.
+2. Pulse-width oscillator and Tweaks panel.
 3. Drive panel.
 4. Reverb panel.
 5. Delay tone and stereo width.

@@ -25,12 +25,29 @@ A 303-style acid bass synth and 32-step sequencer that runs in your browser, wit
 - **Gate length:** how much of each step the note is held, 10-100% (55% matches the original 303). It also sets the note lengths in the exported MIDI.
 - **Live view:** both envelope shapes are drawn from the current knob values. Accent still shortens the filter decay.
 
+**Tweaks** (press **Tweaks**):
+
+- **HP:** a high-pass ahead of the filter, 20-500 Hz (20 is off). **Key Follow:** how much the cutoff rises with the note pitch, 0-100%.
+- **Min Decay:** a floor under the filter and amp decay, 30 ms to 0.6 s. Accent decay is floored too.
+- **PW:** pulse width, 5-95% (50% is a square). **LFO Rate** (0.05-20 Hz) and **LFO>PW** (0-100%) sweep the pulse width.
+
+**Drive** (press **Drive**, LED on/off):
+
+- **Drive:** pre-gain, 0-30 dB, with the level pulled back so full drive stays close to bypass volume. **Type:** soft, tube (asymmetric, more even harmonics) or wavefold.
+- **HP** (20-800 Hz) before the stage, **Tone** (0.8-16 kHz lowpass after it), **Volume** (plus or minus 12 dB) and **Mix** (0-100%, dry to driven).
+
+**Reverb** (press **Reverb**, LED on/off):
+
+- A generated stereo room, not a sample. **Pre-delay** (0-200 ms), **Size**, **Decay**, **Hi Damp** (how fast the tail darkens), **Low Cut** and **Hi Cut** shape it, **Width** sets the stereo spread (0 is mono).
+- **Dry** and **Wet** (0% by default, so the reverb is silent until you raise Wet). Size, Decay and Hi Damp rebuild the room with a short crossfade, so changes do not click.
+
 **Delay** (press **Delay**):
 
 - **Time** in milliseconds (20-1000, a knob or type the exact value in the ms box), **Feedback** (how many repeats), **Mix** (dry to wet; 0 is fully bypassed, which is the default).
 - **Sync** snaps Time to note divisions of the tempo: 1/32, 1/16T, 1/16, 1/8T, 1/16., 1/8, 1/4T, 1/8., 1/4, 1/2T, 1/4., 1/2 (T = triplet, . = dotted). The echo follows the Tempo knob, automated or not, and flipping Sync keeps the echo where it was.
 - **Ping-pong** makes repeats alternate left and right every Time; off, the repeats stay centred.
 - **Fat** darkens each repeat, saturates it and wobbles the time slightly, for thick, tape-like echoes. The saturation never adds gain, so repeats still die away even at maximum feedback.
+- **Tone** is a lowpass on the repeats (the first echo is not filtered), so turning it down makes the tail duller. **Stereo** sets the ping-pong width: 0 is centred, 100% is hard left and right.
 
 **Automate.** Press **Automate** to show min %, max %, `~` and beats-per-sweep under every knob, including the envelope and delay knobs. With `~` on, the knob sweeps between your min and max in time with the tempo.
 

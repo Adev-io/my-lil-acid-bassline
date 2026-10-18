@@ -577,10 +577,11 @@ async () => {
   const k1 = await h.render({ wave: 'saw', knobs: { kfol: 1 }, notes: [{ midi: 72, t: 0.05 }], secs: 0.6 });
   out.keyBright = h.bright(k1.L) / h.bright(k0.L);                    // expect > 1.2
   const open = { cutoff: 1, envmod: 0, res: 0 };
-  const w5 = await h.render({ wave: 'square', knobs: { ...open, pw: 0.5 }, notes: [{ midi: 36, t: 0.05 }], secs: 0.6 });
-  const w1 = await h.render({ wave: 'square', knobs: { ...open, pw: 0 }, notes: [{ midi: 36, t: 0.05 }], secs: 0.6 });
+  // gate 1.0 (sustained note, sounds to 0.6 s): at the default gate or 0.5 the note releases inside the 0.2-0.5 s window and the duty reads low.
+  const w5 = await h.render({ wave: 'square', knobs: { ...open, pw: 0.5 }, notes: [{ midi: 36, t: 0.05 }], secs: 0.6, gate: 1.0 });
+  const w1 = await h.render({ wave: 'square', knobs: { ...open, pw: 0 }, notes: [{ midi: 36, t: 0.05 }], secs: 0.6, gate: 1.0 });
   const mid = [Math.floor(0.2 * h.sr), Math.floor(0.5 * h.sr)];
-  out.duty50 = h.duty(w5.L, ...mid); out.duty5 = h.duty(w1.L, ...mid);   // expect |duty50-0.5| < 0.1 and |duty5-0.5| > 0.25
+  out.duty50 = h.duty(w5.L, ...mid); out.duty5 = h.duty(w1.L, ...mid);   // expect |duty50-0.5| < 0.1 and |duty5-0.5| > 0.25 (measured 0.494 and 0.941)
   const d0 = await h.render({ wave: 'saw', knobs: { fdec: 0, mind: 0 }, notes: [{ midi: 45, t: 0.05 }], secs: 0.6 });
   const d1 = await h.render({ wave: 'saw', knobs: { fdec: 0, mind: 1 }, notes: [{ midi: 45, t: 0.05 }], secs: 0.6 });
   const w = [Math.floor(0.25 * h.sr), Math.floor(0.35 * h.sr)];
@@ -703,7 +704,17 @@ async () => {
   out.offIgnoresKnobs = h.corr(off.L, offKnobs.L);                                    // expect > 0.9999
   const on = await h.render({ wave: 'saw', knobs: { drdrive: 1 }, drive: { on: true, type: 'soft' }, notes, secs: 1.8 });
   out.driveLevel = h.rms(on.L) / h.rms(off.L);                                        // expect 0.5..1.42 (at most ~3 dB louder)
-  out.driveBright = h.bright(on.L) / h.bright(off.L);                                 // expect > 1.15 (added harmonics)
+  // driveBright is window- and gate-sensitive: measured as below with gate 0.5 (1.590). Keep these exact.
+  const off05 = await h.render({ wave: 'saw', notes, secs: 1.8, gate: 0.5 });
+  const on05 = await h.render({ wave: 'saw', knobs: { drdrive: 1 }, drive: { on: true, type: 'soft' }, notes, secs: 1.8, gate: 0.5 });
+  out.driveBright = h.bright(on05.L) / h.bright(off05.L);                              // expect > 1.15 (added harmonics), measured 1.590
+  // Spectral sanity (drive must add highs): energy above 2 kHz = x minus a one-pole lowpass at 2 kHz, held note, window 0.1-0.3 s, gate 1.0, drive 0.5 vs off.
+  // Measured: absolute >2 kHz energy x1.29 with drive 0.5 (must be > 1); x0.49 at drive 1, which is not checked by this plan (see the report).
+  const hiE = (x, a, b) => { const al = 1 - Math.exp(-2 * Math.PI * 2000 / h.sr); let lp = 0, hi = 0; for (let i = 0; i < b; i++) { lp += al * (x[i] - lp); if (i >= a) hi += (x[i] - lp) ** 2; } return hi; };
+  const hiW = [Math.floor(0.1 * h.sr), Math.floor(0.3 * h.sr)], hn = [{ midi: 45, t: 0.05 }], hc = { cutoff: 1, envmod: 0, res: 0 };
+  const hiOff = hiE((await h.render({ wave: 'saw', knobs: hc, drive: { on: false }, notes: hn, secs: 0.8, gate: 1.0 })).L, ...hiW);
+  const hiOn = hiE((await h.render({ wave: 'saw', knobs: { ...hc, drdrive: 0.5 }, drive: { on: true, type: 'soft' }, notes: hn, secs: 0.8, gate: 1.0 })).L, ...hiW);
+  out.spectralHiRatio = hiOn / hiOff;                                                  // expect > 1 (measured 1.289)
   for (const type of ['tube', 'wavefold']) {
     const r = await h.render({ wave: 'saw', knobs: { drdrive: 1 }, drive: { on: true, type }, notes, secs: 1.8 });
     out[type + 'Level'] = h.rms(r.L) / h.rms(off.L); out[type + 'Peak'] = h.peak(r.L);   // finite, peak < 1.5
@@ -844,6 +855,7 @@ Serve, load harness, run:
 ```js
 async () => {
   const h = window.__h, ref = await (await fetch('tests/render-reference.json')).json();
+  // One note only (at 0.05 s): the tail windows 0.3-0.6 s must hold no direct sound. The base render uses the three-note line.
   const notes = [{ midi: 45, t: 0.05 }];
   const out = {};
   const base = await h.render({ wave: 'saw', notes: [{ midi: 45, t: 0.05 }, { midi: 52, t: 0.5, accent: true }, { midi: 57, t: 0.95, glide: true, trig: false }], secs: 1.8 });
