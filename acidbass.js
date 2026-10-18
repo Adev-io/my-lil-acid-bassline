@@ -306,7 +306,7 @@
   function exportFiles(raw) {
     const S = cleanState(raw);
     const bpm = bpmOf(S.knobs.tempo);
-    const sound = Object.entries(S.knobs).map(([k, v]) => k + ' ' + pct(v)).join('  ') + '  wave ' + S.wave + '  delay ' + (S.delay.pp ? 'ping-pong' : 'mono') + (S.delay.fat ? ' fat' : '') + (S.delay.sync ? ' sync ' + syncDiv(S.knobs.dtime).name : '');
+    const sound = Object.entries(S.knobs).map(([k, v]) => k + ' ' + pct(v)).join('  ') + '  wave ' + S.wave + '  delay ' + (S.delay.pp ? 'ping-pong' : 'mono') + (S.delay.fat ? ' fat' : '') + (S.delay.sync ? ' sync ' + syncDiv(S.knobs.dtime).name : '') + '  drive ' + (S.drive.on ? S.drive.type : 'off') + '  reverb ' + (S.reverb.on ? 'on' : 'off');
     const legend = "# notation: C..B note, C' high C, ^ _ octave up/down, * accent, ~ slide, - rest, = tie";
     const files = [];
     S.patterns.forEach((p, i) => {

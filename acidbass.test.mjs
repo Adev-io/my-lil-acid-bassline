@@ -436,3 +436,12 @@ test('reverb IR length follows the decay knob', () => {
   const T = load();
   assert.ok(T.reverbIR(8000, 1, 0.5, 1, 0.5).L.length > 4 * T.reverbIR(8000, 1, 0.5, 0, 0.5).L.length);
 });
+
+test('txt export header lists drive and reverb state', () => {
+  const T = load();
+  const s = T.newState(); T.loadDemo(s);
+  s.drive = { on: true, type: 'tube' }; s.reverb = { on: true };
+  const txt = Buffer.from(T.exportFiles(s).find((f) => f.name.endsWith('.txt')).data).toString('utf8');
+  assert.match(txt, /drive tube/);
+  assert.match(txt, /reverb on/);
+});
