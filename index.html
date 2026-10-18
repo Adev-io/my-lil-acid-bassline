@@ -74,6 +74,9 @@
       <label class="grp" style="margin-top:6px"><span class="t" style="color:#eee" title="the delay time in ms; follows the tempo when Sync is on">time ms</span><input type="number" id="dMs" min="20" max="1000" step="1" aria-label="Delay time in milliseconds"></label>
     </div>
   </div>
+  <div class="panel hidden" id="tw">
+    <div class="eg"><div class="gt">Tweaks</div><div class="krow" id="twK"></div></div>
+  </div>
   <div class="panel hidden" id="env">
     <div class="eg"><div class="gt">Filter envelope</div><div class="krow" id="envF"></div><canvas class="envc" id="cvF" aria-label="Filter envelope shape"></canvas></div>
     <div class="eg"><div class="gt">Amp envelope</div><div class="krow" id="envA"></div><canvas class="envc" id="cvA" aria-label="Amp envelope shape"></canvas></div>
@@ -86,6 +89,7 @@
     <button class="btn" id="envBtn" aria-pressed="false" title="show the filter and amp ADSR and the gate length">Envelope</button>
     <button class="btn" id="midiBtn" aria-pressed="false" title="play and record from a MIDI keyboard or from FL Studio through a virtual MIDI cable (Chrome / Edge)">MIDI in</button>
     <select id="midiIn" class="hidden" aria-label="MIDI input"></select><span id="midiMsg" role="status" style="font-size:10px;color:#333"></span>
+    <button class="btn" id="twBtn" aria-pressed="false" title="show the tweaks: high-pass, key follow, minimum decay, pulse width and its LFO">Tweaks</button>
     <button class="btn" id="fxBtn" aria-pressed="false" title="show the delay: time, feedback, mix, ping-pong, fat">Delay</button>
     <button class="btn" id="autoBtn" aria-pressed="false" title="show per-knob automation: min %, max %, ~ on/off, beats per sweep">Automate</button>
     <label class="grp"><input type="checkbox" id="sync"><span class="t" style="margin:0 0 0 3px">stop at pattern end</span></label>
@@ -133,7 +137,8 @@
 const $ = (id) => document.getElementById(id);
 const T = window.TB303;
 let S = T.newState();
-let ctx = null, osc, f1, f2, vca, master;
+let ctx = null, osc, hpF, pwG, pwDly, pwLfo, pwLfoG, f1, f2, vca, master, keyMul = 1;
+const mkSet = (snap) => { const now = ctx.currentTime; return (p, v) => (snap ? (p.value = v) : p.setTargetAtTime(v, now, 0.03)); };
 const mods = { oct: 0, accent: false, slide: false };   // sticky: shape live play and Write
 let cursor = 0, timeMode = false, rec = true, songMode = 'pattern';
 const run = { on: false, step: 0, slot: 0, songPos: 0, next: 0, stopAtEnd: false };
@@ -147,7 +152,14 @@ function ensureAudio() {
 }
 function buildGraph(c) {
   ctx = c;
-  osc = ctx.createOscillator(); osc.type = S.wave === 'square' ? 'square' : 'sawtooth'; osc.frequency.value = 110;
+  osc = ctx.createOscillator(); osc.type = 'sawtooth'; osc.frequency.value = 110;
+  // Square = the saw minus a copy of itself delayed by pw/frequency: a pulse whose width is the delay (no aliasing a naive pulse would add).
+  // The LFO adds to that delay, which is the pulse-width modulation. Saw mode just mutes the delayed copy.
+  const sum = ctx.createGain(); pwG = ctx.createGain(); pwG.gain.value = S.wave === 'square' ? -1 : 0;
+  pwDly = ctx.createDelay(0.05); pwDly.delayTime.value = 0.5 / 110;
+  pwLfo = ctx.createOscillator(); pwLfo.frequency.value = T.lfoHz(S.knobs.lfor); pwLfoG = ctx.createGain(); pwLfoG.gain.value = 0;
+  osc.connect(sum); osc.connect(pwG); pwG.connect(pwDly); pwDly.connect(sum); pwLfo.connect(pwLfoG); pwLfoG.connect(pwDly.delayTime);
+  hpF = ctx.createBiquadFilter(); hpF.type = 'highpass'; hpF.Q.value = 0.7071; hpF.frequency.value = T.hpHz(S.knobs.hp);
   // Two cascaded lowpass biquads: 24 dB/oct, resonance only on the second so the peak is a single clean ridge.
   f1 = ctx.createBiquadFilter(); f1.type = 'lowpass'; f1.Q.value = 0.5; f1.frequency.value = T.cutoffHz(S.knobs.cutoff);
   f2 = ctx.createBiquadFilter(); f2.type = 'lowpass'; f2.Q.value = T.resQ(S.knobs.res); f2.frequency.value = f1.frequency.value;
@@ -157,9 +169,9 @@ function buildGraph(c) {
   const sh = ctx.createWaveShaper(), c2 = new Float32Array(1024);
   for (let i = 0; i < 1024; i++) c2[i] = Math.tanh((i / 511.5 - 1) * 1.6);
   sh.curve = c2;
-  osc.connect(f1); f1.connect(f2); f2.connect(vca); vca.connect(master); master.connect(sh);
+  sum.connect(hpF); hpF.connect(f1); f1.connect(f2); f2.connect(vca); vca.connect(master); master.connect(sh);
   buildDelay(sh);
-  osc.start();
+  osc.start(); pwLfo.start();
 }
 // ---- delay: dry + a wet bus fed by either a ping-pong pair or a single (mono) line ----
 // Ping-pong: the input enters the left line, which feeds the right, which feeds the left again, so repeats alternate
@@ -210,9 +222,11 @@ function paintDelay() { flag('dPP', S.delay.pp); flag('dFat', S.delay.fat); flag
 const beatsAt = (t) => t * T.bpmOf(S.knobs.tempo) / 60;
 const val = (key, t) => { const a = S.auto[key]; return a.on && ctx ? T.autoValue(a, beatsAt(t === undefined ? ctx.currentTime : t)) : S.knobs[key]; };
 const effCut = (t) => val('cutoff', t);
+// The cutoff the filter rests at: the knob (or its automation), shifted by key follow for the note now sounding.
+const cutHz = (t) => Math.min(16000, T.cutoffHz(effCut(t)) * keyMul);
 // Gate off truncates whatever attack/decay is still pending (cancelScheduledValues) and starts both releases.
 function gateOff(t) {
-  const base = T.cutoffHz(effCut(t));
+  const base = cutHz(t);
   for (const p of [f1.frequency, f2.frequency]) { p.cancelScheduledValues(t); p.setTargetAtTime(base, t, T.relSec(val('frel', t)) / 3); }
   vca.gain.cancelScheduledValues(t);
   vca.gain.setTargetAtTime(0, t, T.relSec(val('arel', t)) / 3);
@@ -222,21 +236,26 @@ function play(ev, t, sec) {
   if (ev.off) return;
   const k = {}; for (const n of Object.keys(S.knobs)) k[n] = val(n, t);
   const f = T.freqOf(ev.midi, T.tuneCents(k.tuning));
+  keyMul = T.keyMul(k.kfol, ev.midi);
+  const pw = T.pwFrac(k.pw), lfoAmt = k.lfopw * 0.4;   // pulse width as a fraction of the period; the LFO swings +-0.4 of it at 100 %
   if (ev.glide) {
     osc.frequency.setValueAtTime(lastFreq, t);
     osc.frequency.exponentialRampToValueAtTime(f, t + 0.06);   // the 303's ~60 ms slide
+    pwDly.delayTime.setValueAtTime(pw / lastFreq, t); pwDly.delayTime.exponentialRampToValueAtTime(pw / f, t + 0.06);
+    pwLfoG.gain.setValueAtTime(lfoAmt / lastFreq, t); pwLfoG.gain.linearRampToValueAtTime(lfoAmt / f, t + 0.06);
   } else if (ev.trig) {
     osc.frequency.setValueAtTime(f, t);
+    pwDly.delayTime.setValueAtTime(pw / f, t); pwLfoG.gain.setValueAtTime(lfoAmt / f, t);
   }
   lastFreq = f;
   const tOff = ev.hold ? Infinity : t + sec * (ev.len < 0.9 ? T.gateFrac(k.gate) : ev.len);
   if (ev.trig) {
     sweep = ev.accent ? Math.min(1, sweep + 0.35) : sweep * 0.5;   // the accent capacitor: stacked accents build
-    const base = T.cutoffHz(effCut(t)), acc = ev.accent ? k.accent : 0;
+    const base = cutHz(t), acc = ev.accent ? k.accent : 0;
     const oct = k.envmod * 4.5 + acc * 1.6 + sweep * k.accent * 0.8;
     const peak = Math.min(base * Math.pow(2, oct), 16000);
     const hold = Math.min(base * Math.pow(2, oct * k.fsus), 16000);   // filter sustain: a fraction of the env depth, in octaves
-    const atk = T.atkSec(k.fatk), dec = ev.accent ? Math.min(T.decSec(k.fdec), 0.2) : T.decSec(k.fdec);   // accent: short filter decay
+    const atk = T.atkSec(k.fatk), dec = Math.max(ev.accent ? Math.min(T.decSec(k.fdec), 0.2) : T.decSec(k.fdec), T.minDecSec(k.mind));   // accent: short filter decay, never below Min Decay
     const top = Math.max(Math.min(t + atk, tOff - 0.001), t + 0.001);   // the peak is reached before a short gate closes
     for (const p of [f1.frequency, f2.frequency]) {
       p.cancelScheduledValues(t); p.setValueAtTime(base, t); p.exponentialRampToValueAtTime(peak, top); p.setTargetAtTime(hold, top, dec / 3);
@@ -392,6 +411,12 @@ const KNOBDEF = [
   ['dtime', 'Time', (v) => (S.delay.sync ? T.syncDiv(v).name : Math.round(T.delayMs(v)) + 'ms'), 'fxK'],
   ['dfb', 'Feedback', (v) => pc(T.delayFb(v)), 'fxK'],
   ['dmix', 'Mix', pc, 'fxK'],
+  ['hp', 'HP', (v) => Math.round(T.hpHz(v)) + 'Hz', 'twK'],
+  ['kfol', 'Key Follow', pc, 'twK'],
+  ['mind', 'Min Decay', (v) => ms(T.minDecSec(v)), 'twK'],
+  ['pw', 'PW', (v) => Math.round(T.pwFrac(v) * 100) + '%', 'twK'],
+  ['lfor', 'LFO Rate', (v) => T.lfoHz(v).toFixed(2) + 'Hz', 'twK'],
+  ['lfopw', 'LFO>PW', pc, 'twK'],
 ];
 const knobUI = {};
 function setKnob(key, v) {
@@ -401,6 +426,7 @@ function setKnob(key, v) {
   const now = ctx.currentTime;
   if (key === 'res') f2.Q.setTargetAtTime(T.resQ(v), now, 0.02);
   if (key === 'volume') master.gain.setTargetAtTime(v, now, 0.02);
+  if (key === 'hp' || key === 'lfor') applyTweaks();
   if (key === 'cutoff') applyCutoff();
   if (key === 'dtime' || key === 'dfb' || key === 'dmix') applyDelay();
   if (key === 'tempo' && S.delay.sync) { applyDelay(); paintKnob('dtime'); }   // a synced echo follows the tempo knob
@@ -409,7 +435,13 @@ function setKnob(key, v) {
 // does flatten the tail of a decay already under way; each new note restarts from the new base anyway.
 function applyCutoff() {
   if (!ctx) return;
-  for (const p of [f1.frequency, f2.frequency]) p.setTargetAtTime(T.cutoffHz(effCut()), ctx.currentTime, 0.05);
+  for (const p of [f1.frequency, f2.frequency]) p.setTargetAtTime(cutHz(), ctx.currentTime, 0.05);
+}
+// HP and the LFO rate are live params. PW, LFO depth, key follow and min decay are read per note, in play().
+function applyTweaks(snap) {
+  if (!ctx) return;
+  const set = mkSet(snap);
+  set(hpF.frequency, T.hpHz(val('hp'))); set(pwLfo.frequency, T.lfoHz(val('lfor')));
 }
 function paintKnob(key) {
   const def = KNOBDEF.find((d) => d[0] === key), ui = knobUI[key], v = val(key);
@@ -464,7 +496,7 @@ for (const [key, label, , cont] of KNOBDEF) {
 }
 function setWave(w) {
   S.wave = w; flag('wSaw', w === 'saw'); flag('wSq', w === 'square'); save();
-  if (osc) osc.type = w === 'square' ? 'square' : 'sawtooth';
+  if (pwG) pwG.gain.setTargetAtTime(w === 'square' ? -1 : 0, ctx.currentTime, 0.005);
 }
 $('wSaw').onclick = () => { ensureAudio(); setWave('saw'); };
 $('wSq').onclick = () => { ensureAudio(); setWave('square'); };
@@ -528,12 +560,14 @@ setInterval(() => {
   const now = ctx.currentTime;
   if (S.auto.res.on) f2.Q.setTargetAtTime(T.resQ(val('res')), now, 0.02);
   if (S.auto.volume.on) master.gain.setTargetAtTime(val('volume'), now, 0.02);
+  if (S.auto.hp.on || S.auto.lfor.on) applyTweaks();
   if (S.auto.cutoff.on) applyCutoff();
   if (S.auto.dtime.on || S.auto.dfb.on || S.auto.dmix.on || (S.delay.sync && S.auto.tempo.on)) applyDelay();
   if (S.delay.sync && S.auto.tempo.on && !S.auto.dtime.on) paintKnob('dtime');
 }, 33);
 $('autoBtn').onclick = () => { const on = !$('case').classList.contains('showauto'); $('case').classList.toggle('showauto', on); flag('autoBtn', on); };
 $('fxBtn').onclick = () => { const on = $('fx').classList.contains('hidden'); $('fx').classList.toggle('hidden', !on); flag('fxBtn', on); };
+$('twBtn').onclick = () => { const on = $('tw').classList.contains('hidden'); $('tw').classList.toggle('hidden', !on); flag('twBtn', on); };
 $('dPP').onclick = () => { ensureAudio(); S.delay.pp = !S.delay.pp; paintDelay(); save(); };
 $('dFat').onclick = () => { ensureAudio(); S.delay.fat = !S.delay.fat; paintDelay(); save(); };
 $('dSync').onclick = () => {
@@ -605,6 +639,7 @@ function adopt(raw) {
   setWave(S.wave); $('swing').value = Math.round(S.swing * 100);
   for (const k of Object.keys(knobUI)) knobUI[k].sync();
   paintDelay();
+  applyTweaks(true);
   if (ctx) { master.gain.value = S.knobs.volume; f2.Q.value = T.resQ(S.knobs.res); }
   cursor = 0; paintSteps();
 }
