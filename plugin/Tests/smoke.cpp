@@ -1,6 +1,7 @@
 // smoke.cpp — drives AcidBassProcessor with MIDI and checks the audio that comes out.
 // Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see ../LICENSE)
 #include "PluginProcessor.h"
+#include "Maps.h"
 #include <cstdio>
 #include <vector>
 
@@ -138,6 +139,36 @@ int main()
             check (std::abs (rms (a, 2000, 15000) / refRms[w] - 1.0) < 0.03, w ? "default square matches the phase-1 level" : "default saw matches the phase-1 level", rms (a, 2000, 15000));
             check (std::abs (brightness (a, 2000, 15000) / refBright[w] - 1.0) < 0.05, w ? "default square matches the phase-1 tone" : "default saw matches the phase-1 tone", brightness (a, 2000, 15000));
         }
+    }
+    {   // knob maps and curves match the web core (golden numbers from acidbass.js)
+        using namespace acidmaps;
+        auto near = [] (double a, double b, double tol = 1e-4) { return std::abs (a - b) <= tol * std::max (1.0, std::abs (b)); };
+        check (near (hpHz (0), 20) && near (hpHz (0.5), 100) && near (hpHz (1), 500), "hpHz");
+        check (near (minDecSec (0), 0.03) && near (minDecSec (0.5), 0.134164079) && near (minDecSec (1), 0.6), "minDecSec");
+        check (near (pwFrac (0), 0.05) && near (pwFrac (1), 0.95), "pwFrac");
+        check (near (lfoHz (0), 0.05) && near (lfoHz (0.5), 1.0, 1e-3) && near (lfoHz (1), 20), "lfoHz");
+        check (near (drHpHz (0.5), 126.491106) && near (drHpHz (1), 800), "drHpHz");
+        check (near (drDb (0.5), 15) && near (drToneHz (0), 800) && near (drToneHz (0.5), 3577.70876) && near (drVolDb (0), -12) && near (drVolDb (1), 12), "drive maps");
+        check (near (rvPreSec (0.5), 0.1) && near (rvDecSec (0), 0.3) && near (rvDecSec (0.5), 1.34164079) && near (rvDecSec (1), 6), "reverb time maps");
+        check (near (rvSizeScale (1), 1.5) && near (rvLowHz (0.5), 100) && near (rvHighHz (0.5), 4472.13595) && near (rvHighHz (1), 20000), "reverb filter maps");
+        check (near (dToneHz (0), 400) && near (dToneHz (0.5), 2828.42712) && near (dToneHz (1), 20000), "dToneHz");
+        check (near (delaySec (0), 0.02) && near (delaySec (0.5), 0.141421356) && near (delaySec (1), 1.0) && near (delayFb (0.5), 0.45) && near (delayFb (1), 0.9), "delay maps");
+        check (near (keyMul (1, 60), 2) && near (keyMul (0.5, 36), 0.70710678) && near (keyMul (0, 90), 1), "keyMul");
+        check (near (driveMakeupDb (30), -12) && near (dbGain (6), 1.99526231), "makeup and dB");
+        const int idx[5] = { 0, 512, 1024, 1500, 2047 };
+        const double soft[5] = { -0.905148268, -0.634930313, 0.000732779561, 0.603312433, 0.905148268 };
+        const double tube[5] = { -1.15412962, -0.716010988, 0.000649706461, 0.444784224, 0.615370393 };
+        const double fold[5] = { -0.928959727, -0.82743448, 0.000952613424, 0.788176656, 0.928959727 };
+        const auto cs = driveCurve (DriveType::Soft), ct = driveCurve (DriveType::Tube), cf = driveCurve (DriveType::Wavefold);
+        bool ok = cs.size() == 2048;
+        for (int i = 0; i < 5; ++i) ok = ok && near (cs[(size_t) idx[i]], soft[i], 1e-5) && near (ct[(size_t) idx[i]], tube[i], 1e-5) && near (cf[(size_t) idx[i]], fold[i], 1e-5);
+        check (ok, "drive curves match the web tables");
+        const auto ir = reverbIR (44100.0, 1, 0.5, 0.5, 0.5);
+        check (ir.L.size() == 59167 && ir.R.size() == 59167, "IR length", (double) ir.L.size());
+        check (near (ir.L[100], 0.0265145488, 1e-4) && near (ir.L[1000], -0.00247813342, 1e-4) && near (ir.L[5000], -0.0280174501, 1e-4), "IR left samples match the web");
+        check (near (ir.R[100], 0.00853167567, 1e-4) && near (ir.R[1000], -0.445941746, 1e-4), "IR right samples match the web");
+        const auto ir2 = reverbIR (44100.0, 1, 0.5, 0.0, 1.0);
+        check (ir2.L.size() == 13230 && near (ir2.L[100], 0.0259936936, 1e-4), "IR with decay 0 and full damp matches");
     }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
