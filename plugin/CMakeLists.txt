@@ -25,9 +25,9 @@ juce_add_plugin(MyLilAcidBassline
     VST3_CATEGORIES Instrument Synth
     COPY_PLUGIN_AFTER_BUILD FALSE)
 
-# The window is the web page itself: the same index.html, acidbass.js and ui-bridge.js the web version ships.
+# The window is the web page itself: the same index.html, acidbass.js, factory.js and ui-bridge.js the web version ships.
 juce_add_binary_data(AcidUi HEADER_NAME "AcidUiData.h" NAMESPACE AcidUi SOURCES
-    ../index.html ../acidbass.js ../ui-bridge.js ui/juce-frontend.js)
+    ../index.html ../acidbass.js ../factory.js ../ui-bridge.js ui/juce-frontend.js)
 
 target_sources(MyLilAcidBassline PRIVATE Source/PluginProcessor.cpp Source/PluginProcessor.h Source/AcidVoice.h Source/Maps.h Source/DriveStage.h Source/DelayStage.h Source/ReverbStage.h
     Source/ParamBridge.h Source/Editor.h Source/Editor.cpp)

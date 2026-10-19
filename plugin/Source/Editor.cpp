@@ -9,6 +9,7 @@ constexpr Asset assets[] = {
     { "/",                  "index_html",        "text/html" },
     { "/index.html",        "index_html",        "text/html" },
     { "/acidbass.js",       "acidbass_js",       "text/javascript" },
+    { "/factory.js",       "factory_js",        "text/javascript" },
     { "/ui-bridge.js",      "uibridge_js",       "text/javascript" },
     { "/juce-frontend.js",  "jucefrontend_js",   "text/javascript" },
 };
