@@ -36,6 +36,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidBassProcessor::createLay
     auto knob = [&l] (const char* id, const char* name, float def) { l.add (std::make_unique<F> (juce::ParameterID { id, 1 }, name, R (0.0f, 1.0f), def)); };
     knob ("hp", "HP", 0.0f); knob ("kfol", "Key Follow", 0.0f); knob ("mind", "Min Decay", 0.0f);
     knob ("pw", "Pulse Width", 0.5f); knob ("lfor", "LFO Rate", 0.6157f); knob ("lfopw", "LFO to PW", 0.0f);
+    knob ("fatk", "Filter Attack", 0.0f); knob ("fsus", "Filter Sustain", 0.0f); knob ("frel", "Filter Release", 0.68f); knob ("aatk", "Amp Attack", 0.0f);
+    knob ("adec", "Amp Decay", 0.5f); knob ("asus", "Amp Sustain", 1.0f); knob ("arel", "Amp Release", 0.03f);
     l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "dron", 1 }, "Drive On", false));
     l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "drtype", 1 }, "Drive Type", juce::StringArray { "Soft", "Tube", "Wavefold" }, 0));
     knob ("drdrive", "Drive", 0.0f); knob ("drhp", "Drive HP", 0.0f); knob ("drtone", "Drive Tone", 1.0f); knob ("drvol", "Drive Volume", 0.5f); knob ("drmix", "Drive Mix", 1.0f);
@@ -56,6 +58,8 @@ AcidParams AcidBassProcessor::currentParams() const
     p.decaySec = v ("decay"); p.accent = v ("accent"); p.volume = v ("volume"); p.square = v ("wave") > 0.5f;
     p.hpHz = (float) acidmaps::hpHz (v ("hp")); p.keyFollow = v ("kfol"); p.minDecSec = (float) acidmaps::minDecSec (v ("mind"));
     p.pw = (float) acidmaps::pwFrac (v ("pw")); p.lfoHz = (float) acidmaps::lfoHz (v ("lfor")); p.lfoPw = v ("lfopw");
+    p.fAtkSec = (float) acidmaps::atkSec (v ("fatk")); p.fSus = v ("fsus"); p.fRelSec = (float) acidmaps::relSec (v ("frel"));
+    p.aAtkSec = (float) acidmaps::atkSec (v ("aatk")); p.aDecSec = (float) acidmaps::envDecSec (v ("adec")); p.aSus = v ("asus"); p.aRelSec = (float) acidmaps::relSec (v ("arel"));
     return p;
 }
 

@@ -331,6 +331,54 @@ int main()
         check (corr (ml, mr, t0, t1) > 0.99, "width 0 makes the tail mono", corr (ml, mr, t0, t1));
         check (corr (wl, wr, t0, t1) < 0.5, "full width keeps the tail stereo", corr (wl, wr, t0, t1));
     }
+    {   // envelopes: maps, parameters, and the audio they shape
+        using namespace acidmaps;
+        auto near = [] (double a, double b, double tol = 1e-4) { return std::abs (a - b) <= tol * std::max (1.0, std::abs (b)); };
+        check (near (atkSec (0), 0.002) && near (atkSec (1), 1.5), "atkSec");
+        check (near (envDecSec (0), 0.03) && near (envDecSec (0.5), 0.27331300737) && near (envDecSec (1), 2.49), "envDecSec");
+        check (near (relSec (0.03), 0.00598455419) && near (relSec (0.68), 0.29401588734) && near (relSec (1), 2.0), "relSec");
+        auto p = make();
+        const struct { const char* id; float def; } ids[7] = { { "fatk", 0.0f }, { "fsus", 0.0f }, { "frel", 0.68f }, { "aatk", 0.0f }, { "adec", 0.5f }, { "asus", 1.0f }, { "arel", 0.03f } };
+        bool have = true; double worst = 0;
+        for (const auto& e : ids)
+        {
+            auto* prm = p->apvts.getParameter (e.id);
+            if (prm == nullptr) { have = false; continue; }
+            worst = std::max (worst, (double) std::abs (p->apvts.getRawParameterValue (e.id)->load() - e.def));
+        }
+        check (have && worst < 1e-4, "the seven envelope parameters exist with the web defaults", worst);
+
+        const int hold = (int) (2.0 * sr);
+        auto held = [&] (auto setup) { auto q = make(); setParam (*q, "envmod", 0.0f); setParam (*q, "cutoff", 3000.0f); setup (*q); return render (*q, 2.5, { { 0, true, 45, 90 } }); };
+        const int oneSec = (int) (1.0 * sr);
+        auto level = [&] (const std::vector<float>& v, int at) { return rms (v, at, at + 2000); };
+        auto plucked = held ([] (AcidBassProcessor& q) { setParam (q, "asus", 0.0f); setParam (q, "adec", 0.1f); });
+        double peak = 0; for (int i = 0; i + 2000 < oneSec; i += 500) peak = std::max (peak, level (plucked, i));
+        check (level (plucked, oneSec) < 0.05 * peak, "amp sustain 0 with a short decay plucks", level (plucked, oneSec) / peak);
+        auto sustained = held ([] (AcidBassProcessor& q) { setParam (q, "asus", 1.0f); setParam (q, "adec", 0.1f); });
+        double peak2 = 0; for (int i = 0; i + 2000 < oneSec; i += 500) peak2 = std::max (peak2, level (sustained, i));
+        check (level (sustained, oneSec) > 0.5 * peak2, "amp sustain 1 holds the level", level (sustained, oneSec) / peak2);
+        (void) hold;
+
+        auto fast = held ([] (AcidBassProcessor&) {});
+        auto slow = held ([] (AcidBassProcessor& q) { setParam (q, "aatk", 1.0f); });
+        const int w = (int) (0.02 * sr);
+        check (rms (slow, 0, w) < 0.1 * rms (fast, 0, w), "amp attack at max swells in slowly", rms (slow, 0, w) / rms (fast, 0, w));
+
+        auto offAt = [&] (auto setup) { auto q = make(); setParam (*q, "envmod", 0.0f); setParam (*q, "cutoff", 3000.0f); setup (*q);
+                                        return render (*q, 1.5, { { 0, true, 45, 90 }, { (int) (0.5 * sr), false, 45, 0 } }); };
+        const int after = (int) (0.8 * sr);   // 300 ms after note off
+        auto shortRel = offAt ([] (AcidBassProcessor&) {});
+        auto longRel = offAt ([] (AcidBassProcessor& q) { setParam (q, "arel", 1.0f); });
+        const double heldLevel = rms (longRel, (int) (0.4 * sr), (int) (0.5 * sr));
+        check (rms (longRel, after, after + 2000) > 0.1 * heldLevel, "amp release at max leaves a tail", rms (longRel, after, after + 2000) / heldLevel);
+        check (rms (shortRel, after, after + 2000) < 0.01 * rms (shortRel, (int) (0.4 * sr), (int) (0.5 * sr)), "default amp release is short", rms (shortRel, after, after + 2000));
+
+        auto fsus = [&] (float v) { auto q = make(); setParam (*q, "cutoff", 150.0f); setParam (*q, "envmod", 1.0f); setParam (*q, "decay", 0.05f); setParam (*q, "fsus", v);
+                                    return render (*q, 1.2, { { 0, true, 45, 90 } }); };
+        auto f0 = fsus (0.0f), f1 = fsus (1.0f);
+        check (brightness (f1, (int) (0.6 * sr), (int) (1.0 * sr)) > brightness (f0, (int) (0.6 * sr), (int) (1.0 * sr)) * 1.2, "filter sustain keeps the note bright", brightness (f1, (int) (0.6 * sr), (int) (1.0 * sr)) / brightness (f0, (int) (0.6 * sr), (int) (1.0 * sr)));
+    }
     {   // the UI bridge: values by id, in plugin units, with no echo
         auto p = make();
         ParamBridge b (*p);

@@ -1,5 +1,5 @@
 // AcidVoice.h — the mono acid voice: PolyBLEP saw/square into two cascaded 12 dB lowpasses (24 dB/oct, resonance on the
-// second), a decaying filter envelope, an accent, and a legato glide. It is the C++ twin of the web page's `play()` in
+// second), filter and amp ADSR envelopes, an accent, and a legato glide. It is the C++ twin of the web page's `play()` in
 // index.html (the web app) and uses the same constants, so the two sound alike.
 // Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see plugin/LICENSE)
 #pragma once
@@ -25,6 +25,8 @@ struct AcidParams
     float pw = 0.5f;           // pulse width fraction (square only)
     float lfoHz = 1.0f;        // LFO rate
     float lfoPw = 0.0f;        // 0..1, LFO depth on the pulse width
+    float fAtkSec = 0.002f, fSus = 0.0f, fRelSec = 0.2940f;        // filter attack, sustain (fraction of the env depth), release
+    float aAtkSec = 0.002f, aDecSec = 0.2733f, aSus = 1.0f, aRelSec = 0.0060f;   // amp ADSR; the numbers are the web defaults
 };
 
 class AcidVoice
@@ -38,14 +40,13 @@ public:
         hp.setType (juce::dsp::StateVariableTPTFilterType::highpass); hp.setResonance (0.7071f);
         f1.setResonance (0.5f);
         glideCoef = 1.0f - std::exp (-1.0f / (0.02f * (float) sr));   // ~60 ms to settle
-        atkCoef   = 1.0f - std::exp (-1.0f / (0.001f * (float) sr));
-        relCoef   = 1.0f - std::exp (-1.0f / (0.002f * (float) sr));
         reset();
     }
 
     void reset()
     {
         held.clear(); gate = false; phase = 0.0; freq = targetFreq = 110.0; ampEnv = 0.0f; filtEnv = 0.0f; sweep = 0.0f;
+        filtAtkInc = 0.0f; ampAtkCoef = 0.0f; ampAtkLeft = 0.0; filtRising = false;
         f1.reset(); f2.reset(); hp.reset(); lfoPhase = 0.0; keyMulNow = 1.0f;
     }
 
@@ -63,7 +64,10 @@ public:
         keyMulNow = (float) acidmaps::keyMul (p.keyFollow, note);
         freq = targetFreq;
         sweep = accented ? std::min (1.0f, sweep + 0.35f) : sweep * 0.5f;
-        filtEnv = 1.0f;
+        filtEnv = 0.0f; filtRising = true;
+        filtAtkInc = 1.0f / (std::max (p.fAtkSec, 0.001f) * (float) sampleRate);
+        const float aa = std::max (p.aAtkSec, 0.002f);
+        ampAtkLeft = aa * sampleRate; ampAtkCoef = 1.0f - std::exp (-1.0f / (aa / 4.0f * (float) sampleRate));
         gate = true;
     }
 
@@ -80,6 +84,9 @@ public:
     {
         const float decSec = std::max (accented ? std::min (p.decaySec, 0.2f) : p.decaySec, p.minDecSec);
         const float decCoef = std::exp (-1.0f / (std::max (decSec, 0.005f) / 3.0f * (float) sampleRate));
+        const float fRelCoef = std::exp (-1.0f / (std::max (p.fRelSec, 0.002f) / 3.0f * (float) sampleRate));
+        const float aDecCoef = 1.0f - std::exp (-1.0f / (std::max (p.aDecSec, 0.005f) / 3.0f * (float) sampleRate));
+        const float aRelCoef = 1.0f - std::exp (-1.0f / (std::max (p.aRelSec, 0.002f) / 3.0f * (float) sampleRate));
         const float acc = accented ? p.accent : 0.0f;
         const float oct = p.envmod * 4.5f + acc * 1.6f + sweep * p.accent * 0.8f;
         const float level = 0.45f * (1.0f + acc * 0.9f) / (1.0f + p.res * 0.6f);   // resonance eats level, as on the hardware
@@ -108,8 +115,14 @@ public:
                 s -= sawBlep (shifted, dt);
             }
             s = f2.processSample (0, f1.processSample (0, hp.processSample (0, s)));
-            ampEnv += ((gate ? level : 0.0f) - ampEnv) * (gate ? atkCoef : relCoef);
-            filtEnv *= decCoef;
+            if (gate)
+            {
+                if (ampAtkLeft > 0.0) { ampEnv += (level - ampEnv) * ampAtkCoef; ampAtkLeft -= 1.0; }
+                else                  { ampEnv += (level * p.aSus - ampEnv) * aDecCoef; }
+                if (filtRising) { filtEnv += filtAtkInc; if (filtEnv >= 1.0f) { filtEnv = 1.0f; filtRising = false; } }
+                else            { filtEnv = p.fSus + (filtEnv - p.fSus) * decCoef; }
+            }
+            else { ampEnv -= ampEnv * aRelCoef; filtEnv *= fRelCoef; filtRising = false; }
             out[i] = s * ampEnv;   // volume and the soft clip are applied by the processor, after the drive stage
         }
     }
@@ -127,6 +140,7 @@ private:
     juce::dsp::StateVariableTPTFilter<float> f1, f2, hp;
     std::vector<int> held;
     double sampleRate = 44100.0, phase = 0.0, freq = 110.0, targetFreq = 110.0, lfoPhase = 0.0;
-    float glideCoef = 0.0f, atkCoef = 0.0f, relCoef = 0.0f, ampEnv = 0.0f, filtEnv = 0.0f, sweep = 0.0f, keyMulNow = 1.0f;
-    bool gate = false, accented = false;
+    float glideCoef = 0.0f, filtAtkInc = 0.0f, ampAtkCoef = 0.0f, ampEnv = 0.0f, filtEnv = 0.0f, sweep = 0.0f, keyMulNow = 1.0f;
+    double ampAtkLeft = 0.0;
+    bool gate = false, accented = false, filtRising = false;
 };
