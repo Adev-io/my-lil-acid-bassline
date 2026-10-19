@@ -20,7 +20,7 @@ juce::Rectangle<int> fitToDisplay()
 {
     int h = kH;
     if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
-        h = juce::jlimit (juce::roundToInt (kMinW * (double) kH / kW), kH, d->userBounds.getHeight() - kChrome);
+        h = juce::jlimit (juce::roundToInt (kMinW * (double) kH / kW), kH, juce::roundToInt (d->userBounds.getHeight()) - kChrome);
     return { juce::roundToInt (h * (double) kW / kH), h };
 }
 
