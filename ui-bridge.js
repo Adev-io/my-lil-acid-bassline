@@ -23,7 +23,17 @@
   const BANK = 128, FACTORY = 64;
   const slotLabel = (i, list) => String(i + 1).padStart(2, '0') + ' ' + (i < FACTORY && list[i] ? list[i].name : 'User');
   const isBase = (pat, baseP) => JSON.stringify(pat) === JSON.stringify(baseP);
-  window.PluginMap = { NONE, idOf, toPlugin, fromPlugin, fitZoom, slotLabel, isBase, BANK, FACTORY };
+  // Bytes -> base64 text (the page's btoa needs a string; this takes a Uint8Array and works without a browser).
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const b64 = (u8) => {
+    let o = '';
+    for (let i = 0; i < u8.length; i += 3) {
+      const n = (u8[i] << 16) | ((u8[i + 1] || 0) << 8) | (u8[i + 2] || 0);
+      o += B64[n >> 18] + B64[(n >> 12) & 63] + (i + 1 < u8.length ? B64[(n >> 6) & 63] : '=') + (i + 2 < u8.length ? B64[n & 63] : '=');
+    }
+    return o;
+  };
+  window.PluginMap = { NONE, idOf, toPlugin, fromPlugin, fitZoom, slotLabel, isBase, b64, BANK, FACTORY };
 
   if (!window.__JUCE__) return;   // not inside the plugin
 
@@ -77,7 +87,9 @@
   const pRest = pBtn('pRest', 'Restore', 'put this slot back to its factory pattern, or clear it');
   const pSel = document.createElement('select'); pSel.id = 'pSel'; pSel.setAttribute('aria-label', 'pattern slot');
   for (let i = 0; i < BANK; i++) { const o = document.createElement('option'); o.value = i; o.textContent = slotLabel(i, fl); pSel.append(o); }
-  pick.append(pPrev, pSel, pNext, pRest);
+  const pDrag = pBtn('pDrag', 'Drag MIDI', 'drag this pattern as a .mid file into the host (piano roll, channel rack, playlist)');
+  const pSave = pBtn('pSave', 'Save MIDI', 'save this pattern as a .mid file in Documents\A_Development\MyLilAcidBassline\midi');
+  pick.append(pPrev, pSel, pNext, pRest, pDrag, pSave);
   $('gSlot').after(pick);
   const read = (id) => (SW[id] ? SW[id][0]() : toPlugin(byId[id], S.knobs[byId[id]]));
   const ids = [...Object.keys(byId), ...Object.keys(SW)];
@@ -116,6 +128,11 @@
     pSel.onchange = () => goSlot(+pSel.value);
     pPrev.onclick = () => goSlot(S.cur - 1); pNext.onclick = () => goSlot(S.cur + 1);
     pRest.onclick = () => { S.patterns[S.cur] = JSON.parse(JSON.stringify(base[S.cur])); cursor = 0; paintSteps(); sendPat(); };
+    // Sequence to MIDI: the current pattern as a .mid file, dragged out on pointerdown (the mouse is still down) or saved.
+    const midiEvent = (type) => backend.emitEvent(type, { name: slotLabel(S.cur, fl), b64: b64(T.patternsToMidi([S.patterns[S.cur]], T.bpmOf(S.knobs.tempo), slotLabel(S.cur, fl), T.gateFrac(S.knobs.gate))) });
+    pDrag.addEventListener('pointerdown', () => midiEvent('dragmidi'));
+    pSave.onclick = () => midiEvent('savemidi');
+    backend.addEventListener('msg', (m) => { $('msg').textContent = m.text; });
     const paint1 = window.paintSteps;
     window.paintSteps = () => { paint1(); showSlot(); };
     // The plugin's whole bank (on ready and after a project restore): factory lines with the overrides on top.

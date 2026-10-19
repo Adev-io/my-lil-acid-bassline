@@ -16,6 +16,8 @@ public:
 private:
     std::optional<juce::WebBrowserComponent::Resource> resource (const juce::String& url);
     void pushChanges (bool all);
+    void dragMidi (const juce::var&);
+    void saveMidi (const juce::var&);
     void timerCallback() override { pushChanges (false); }
 
     AcidBassProcessor& proc;

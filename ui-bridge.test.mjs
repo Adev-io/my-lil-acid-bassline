@@ -81,3 +81,18 @@ test('isBase compares pattern content, not identity', () => {
   b.steps[0].gate = 1;
   assert.ok(!M.isBase(a, b));
 });
+
+test('b64 matches the standard base64 for every length remainder', () => {
+  for (const n of [0, 1, 2, 3, 4, 5, 100]) {
+    const u = Uint8Array.from({ length: n }, (_, i) => (i * 37 + 250) & 255);
+    assert.equal(M.b64(u), Buffer.from(u).toString('base64'), 'len ' + n);
+  }
+});
+
+test('a pattern midi survives the base64 hop and is a standard MIDI file', () => {
+  const T = sb.TB303;
+  const mid = T.patternsToMidi([T.parsePattern('C* - E')], 120, '01 Funk 01', T.gateFrac(0.5));
+  const back = Buffer.from(Buffer.from(M.b64(mid), 'base64'));
+  assert.equal(back.subarray(0, 4).toString('latin1'), 'MThd');
+  assert.deepEqual([...back], [...mid]);
+});

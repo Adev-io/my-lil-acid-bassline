@@ -24,6 +24,16 @@ juce::Rectangle<int> fitToDisplay()
     return { juce::roundToInt (h * (double) kW / kH), h };
 }
 
+// The .mid the page sends as base64 goes to a file named after the slot ("07 Funk 07.mid"); returns the file or a nonexistent one.
+juce::File writeMidi (const juce::File& dir, const juce::var& v)
+{
+    juce::MemoryOutputStream bytes;
+    if (! juce::Base64::convertFromBase64 (bytes, v["b64"].toString()) || bytes.getDataSize() < 22) return {};
+    auto name = juce::File::createLegalFileName (v["name"].toString()).trim();
+    if (name.isEmpty()) name = "pattern";
+    const auto f = dir.getChildFile (name.substring (0, 60) + ".mid");
+    return dir.createDirectory().wasOk() && f.replaceWithData (bytes.getData(), bytes.getDataSize()) ? f : juce::File();
+}
 }
 
 std::optional<juce::WebBrowserComponent::Resource> AcidEditor::resource (const juce::String& url)
@@ -50,6 +60,8 @@ AcidEditor::AcidEditor (AcidBassProcessor& p)
                .withEventListener ("ready",   [this] (const juce::var&) { pushChanges (true); })
                .withEventListener ("set",     [this] (const juce::var& v) { bridge.setReal (v["id"].toString(), (float) (double) v["v"]); })
                .withEventListener ("pattern", [this] (const juce::var& v) { proc.setPatternSlot ((int) v["slot"], v["json"].toString(), (bool) v["base"]); lastBankRev = proc.bankRev(); })
+               .withEventListener ("dragmidi", [this] (const juce::var& v) { dragMidi (v); })
+               .withEventListener ("savemidi", [this] (const juce::var& v) { saveMidi (v); })
                .withEventListener ("gesture", [this] (const juce::var& v) { bridge.gesture (v["id"].toString(), (bool) v["on"]); }))
 {
     addAndMakeVisible (web);
@@ -63,6 +75,26 @@ AcidEditor::AcidEditor (AcidBassProcessor& p)
 }
 
 AcidEditor::~AcidEditor() { stopTimer(); bridge.endAllGestures(); }
+
+void AcidEditor::dragMidi (const juce::var& v)
+{
+    const auto f = writeMidi (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("MyLilAcidBassline-midi"), v);
+    if (f == juce::File()) return;
+    // Started from the message loop, not inside the WebView callback: the OS drag runs its own loop until the mouse is released.
+    juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<AcidEditor> (this), path = f.getFullPathName()]
+    {
+        if (safe != nullptr) juce::DragAndDropContainer::performExternalDragDropOfFiles ({ path }, false, safe.getComponent(), nullptr);
+    });
+}
+
+void AcidEditor::saveMidi (const juce::var& v)
+{
+    const auto dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("A_Development").getChildFile ("MyLilAcidBassline").getChildFile ("midi");
+    const auto f = writeMidi (dir, v);
+    auto* o = new juce::DynamicObject();
+    o->setProperty ("text", f == juce::File() ? juce::String ("Could not save the MIDI file") : "Saved " + f.getFullPathName());
+    web.emitEventIfBrowserIsVisible ("msg", juce::var (o));
+}
 
 void AcidEditor::pushChanges (bool all)
 {
