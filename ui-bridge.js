@@ -16,7 +16,10 @@
   const idOf = (key) => (REAL[key] ? REAL[key].id : key);
   const toPlugin = (key, v) => (REAL[key] ? REAL[key].to(v) : v);
   const fromPlugin = (key, x) => clamp01(REAL[key] ? REAL[key].from(x) : x);
-  window.PluginMap = { NONE, idOf, toPlugin, fromPlugin };
+  // The page's natural size in the plugin (sequencer parts hidden). A smaller window scales the page down to fit, never up.
+  const NAT_W = 810, NAT_H = 750;
+  const fitZoom = (w, h) => Math.min(1, Math.max(0.3, Math.min(w / NAT_W, h / NAT_H)));
+  window.PluginMap = { NONE, idOf, toPlugin, fromPlugin, fitZoom };
 
   if (!window.__JUCE__) return;   // not inside the plugin
 
@@ -27,6 +30,8 @@
     + '.plug .sect:has(#keys),.plug #steps,.plug #steps+div,.plug .sect:has(#gBank),.plug .sect:has(#run),.plug .sect:has(#song),'
     + '.plug div:has(>#io),.plug .grp:has(#swing),.plug .grp:has(#sync),.plug .grp:has(#dMs),.plug .eg:has(#envG),.plug .eg:has(#envA),.plug .kw.nop{display:none!important}';
   document.head.append(st);
+  const fit = () => { document.body.style.zoom = fitZoom(innerWidth, innerHeight); };
+  fit(); addEventListener('resize', fit);
   window.ensureAudio = () => {};   // the plugin makes the sound; the page never opens an audio context
   // The typing keys play notes in the web page; here they would throw (no audio context) and FL owns the keyboard anyway.
   for (const type of ['keydown', 'keyup'])

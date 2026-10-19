@@ -54,3 +54,10 @@ test('the switches the bridge carries exist in the plugin', () => {
   const cpp = read('./plugin/Source/PluginProcessor.cpp');
   for (const id of ['wave', 'dron', 'drtype', 'rvon', 'dpp']) assert.ok(new RegExp(`["']${id}["']`).test(cpp), id);
 });
+
+test('fitZoom scales the page down to the window and never up', () => {
+  assert.equal(M.fitZoom(1000, 900), 1);
+  assert.equal(M.fitZoom(405, 900), 0.5);
+  assert.equal(M.fitZoom(1000, 375), 0.5);
+  assert.equal(M.fitZoom(10, 10), 0.3);
+});

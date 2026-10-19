@@ -41,8 +41,9 @@ AcidEditor::AcidEditor (AcidBassProcessor& p)
 {
     addAndMakeVisible (web);
     web.goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
+    setResizeLimits (410, 375, 1100, 1000);
     setResizable (true, true);
-    setSize (820, 720);
+    setSize (820, 760);
     startTimerHz (30);
 }
 
