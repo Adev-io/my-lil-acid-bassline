@@ -16,10 +16,14 @@
   const idOf = (key) => (REAL[key] ? REAL[key].id : key);
   const toPlugin = (key, v) => (REAL[key] ? REAL[key].to(v) : v);
   const fromPlugin = (key, x) => clamp01(REAL[key] ? REAL[key].from(x) : x);
-  // The page's natural size in the plugin (16 steps showing; 32 steps need about 1020 high and scroll). A smaller window scales the page down to fit, never up.
-  const NAT_W = 805, NAT_H = 960;
+  // The page's natural size in the plugin (16 steps showing; 32 steps need about 1050 high and scroll). A smaller window scales the page down to fit, never up.
+  const NAT_W = 805, NAT_H = 990;
   const fitZoom = (w, h) => Math.min(1, Math.max(0.3, Math.min(w / NAT_W, h / NAT_H)));
-  window.PluginMap = { NONE, idOf, toPlugin, fromPlugin, fitZoom };
+  // Pattern bank: slots 0..63 are the factory lines, 64..127 start empty. Shown 1-based ("07 Funk 07", "70 User").
+  const BANK = 128, FACTORY = 64;
+  const slotLabel = (i, list) => String(i + 1).padStart(2, '0') + ' ' + (i < FACTORY && list[i] ? list[i].name : 'User');
+  const isBase = (pat, baseP) => JSON.stringify(pat) === JSON.stringify(baseP);
+  window.PluginMap = { NONE, idOf, toPlugin, fromPlugin, fitZoom, slotLabel, isBase, BANK, FACTORY };
 
   if (!window.__JUCE__) return;   // not inside the plugin
 
@@ -27,7 +31,7 @@
   document.body.classList.add('plug');
   const st = document.createElement('style');
   st.textContent = '.plug .seq,.plug #midiBtn,.plug #midiIn,.plug #midiMsg,.plug #autoBtn,.plug #dFat,.plug #dSync,.plug .envc,'
-    + '.plug .sect:has(#gBank),.plug #run,.plug #mode,.plug .sect:has(#song)>.t,.plug #song,.plug #sAdd,.plug #sClr,'
+    + '.plug #gBank,.plug #gGroup,.plug #gSlot,.plug #run,.plug #mode,.plug .sect:has(#song)>.t,.plug #song,.plug #sAdd,.plug #sClr,'
     + '.plug div:has(>#io),.plug .grp:has(#sync),.plug .grp:has(#dMs),.plug .kw.nop{display:none!important}';
   document.head.append(st);
   const fit = () => { document.body.style.zoom = fitZoom(innerWidth, innerHeight); };
@@ -62,6 +66,19 @@
   document.querySelector('.sect').append(seqBtn);
   const paintSeq = () => { seqBtn.classList.toggle('on', seqOn); seqBtn.setAttribute('aria-pressed', String(seqOn)); };
   seqBtn.onclick = () => { seqOn = !seqOn; paintSeq(); };
+  // Slot picker (replaces the bank/group/no. buttons): prev, next, a list of all 128, and Restore.
+  const fl = (window.TB303Factory && window.TB303Factory.list) || [];
+  const base = Array.from({ length: BANK }, (_, i) => (i < FACTORY && fl[i] ? T.parsePattern(fl[i].steps) : T.emptyPattern()));
+  while (S.patterns.length < BANK) S.patterns.push(T.emptyPattern());
+  T.slotName = (i) => slotLabel(i, fl);
+  const pick = document.createElement('div'); pick.className = 'grp'; pick.id = 'gPick';
+  const pBtn = (id, txt, title) => { const b = document.createElement('button'); b.className = 'btn'; b.id = id; b.textContent = txt; b.title = title; return b; };
+  const pPrev = pBtn('pPrev', '<', 'previous slot'), pNext = pBtn('pNext', '>', 'next slot');
+  const pRest = pBtn('pRest', 'Restore', 'put this slot back to its factory pattern, or clear it');
+  const pSel = document.createElement('select'); pSel.id = 'pSel'; pSel.setAttribute('aria-label', 'pattern slot');
+  for (let i = 0; i < BANK; i++) { const o = document.createElement('option'); o.value = i; o.textContent = slotLabel(i, fl); pSel.append(o); }
+  pick.append(pPrev, pSel, pNext, pRest);
+  $('gSlot').after(pick);
   const read = (id) => (SW[id] ? SW[id][0]() : toPlugin(byId[id], S.knobs[byId[id]]));
   const ids = [...Object.keys(byId), ...Object.keys(SW)];
 
@@ -92,9 +109,20 @@
     // The pattern lives in the plugin (saved with the project): ship edits out, take the plugin's copy in.
     const patJson = () => JSON.stringify(S.patterns[S.cur]);
     let lastPat = patJson();
-    const pollPattern = () => { const j = patJson(); if (j !== lastPat) { lastPat = j; backend.emitEvent('pattern', { json: j }); } };
-    backend.addEventListener('pattern', (m) => {
-      S.patterns[S.cur] = T.cleanPattern(JSON.parse(m.json));
+    const sendPat = () => { const j = patJson(); lastPat = j; backend.emitEvent('pattern', { json: j, slot: S.cur, base: isBase(S.patterns[S.cur], base[S.cur]) }); };
+    const pollPattern = () => { if (patJson() !== lastPat) sendPat(); };
+    const showSlot = () => { pSel.value = S.cur; };
+    const goSlot = (i) => { S.cur = (i + BANK) % BANK; cursor = 0; paintSteps(); sendPat(); };
+    pSel.onchange = () => goSlot(+pSel.value);
+    pPrev.onclick = () => goSlot(S.cur - 1); pNext.onclick = () => goSlot(S.cur + 1);
+    pRest.onclick = () => { S.patterns[S.cur] = JSON.parse(JSON.stringify(base[S.cur])); cursor = 0; paintSteps(); sendPat(); };
+    const paint1 = window.paintSteps;
+    window.paintSteps = () => { paint1(); showSlot(); };
+    // The plugin's whole bank (on ready and after a project restore): factory lines with the overrides on top.
+    backend.addEventListener('bank', (m) => {
+      for (let i = 0; i < BANK; i++) S.patterns[i] = JSON.parse(JSON.stringify(base[i]));
+      for (const [k, j] of Object.entries(m.overrides || {})) { const i = +k; if (i >= 0 && i < BANK) S.patterns[i] = T.cleanPattern(JSON.parse(j)); }
+      S.cur = Math.min(BANK - 1, Math.max(0, m.cur | 0));
       cursor = Math.min(cursor, S.patterns[S.cur].len - 1);
       lastPat = patJson();   // already the plugin's, so do not echo it back
       paintSteps();

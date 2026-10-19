@@ -58,10 +58,26 @@ test('the switches the bridge carries exist in the plugin', () => {
 test('fitZoom scales the page down to the window and never up', () => {
   assert.equal(M.fitZoom(1000, 1000), 1);
   assert.equal(M.fitZoom(402.5, 900), 0.5);
-  assert.equal(M.fitZoom(1000, 480), 0.5);
+  assert.equal(M.fitZoom(1000, 495), 0.5);
   assert.equal(M.fitZoom(10, 10), 0.3);
 });
 
 test('only tempo is left without a plugin parameter (swing and seqon are switches, gate is real)', () => {
   assert.equal(JSON.stringify(M.NONE), '["tempo"]');
+});
+
+test('slot labels are 1-based; factory slots carry the name, the rest are User', () => {
+  const list = [{ name: 'Funk 01' }, { name: 'Funk 02' }];
+  assert.equal(M.slotLabel(0, list), '01 Funk 01');
+  assert.equal(M.slotLabel(1, list), '02 Funk 02');
+  assert.equal(M.slotLabel(69, list), '70 User');
+  assert.equal(M.slotLabel(127, list), '128 User');
+  assert.equal(M.BANK, 128); assert.equal(M.FACTORY, 64);
+});
+
+test('isBase compares pattern content, not identity', () => {
+  const a = sb.TB303.emptyPattern(), b = sb.TB303.emptyPattern();
+  assert.ok(M.isBase(a, b));
+  b.steps[0].gate = 1;
+  assert.ok(!M.isBase(a, b));
 });
