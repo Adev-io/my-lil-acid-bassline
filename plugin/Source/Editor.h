@@ -19,7 +19,7 @@ private:
     void timerCallback() override { pushChanges (false); }
 
     AcidBassProcessor& proc;
-    juce::String lastPattern;
+    int lastBankRev = -1;
     int lastStep = -2;
     ParamBridge bridge;
     juce::WebBrowserComponent web;

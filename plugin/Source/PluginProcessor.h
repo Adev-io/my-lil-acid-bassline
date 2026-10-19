@@ -7,6 +7,7 @@
 #include "DelayStage.h"
 #include "ReverbStage.h"
 #include "Sequencer.h"
+#include <map>
 
 class AcidBassProcessor final : public juce::AudioProcessor, private juce::Timer
 {
@@ -47,6 +48,12 @@ public:
 
     void setPatternJson (const juce::String&);
     juce::String getPatternJson() const;
+    // 128 pattern slots: the processor keeps the current pattern, `cur`, and the slots that differ from the page's factory patterns.
+    int getCurSlot() const;
+    juce::String getBankJson() const;   // {"cur":n,"overrides":{"5":"<pattern json>"}}
+    void setPatternSlot (int slot, const juce::String& json, bool base);   // select slot, its content is json; base = it equals the factory pattern
+    int bankRev() const { return bankRevNow.load(); }
+    void setBankFile (const juce::File&);   // overrides saved here on every edit, loaded as the starting overrides
     int seqStep() const { return seqStepNow.load(); }
 
 private:
@@ -63,6 +70,12 @@ private:
     acidseq::Engine seqEngine;
     acidseq::Pattern pattern, audioPattern;
     mutable juce::SpinLock patternLock;
+    int cur = 0;
+    std::map<int, juce::String> overrides;   // slot -> canonical pattern json, guarded by patternLock
+    juce::File bankFile;
+    std::atomic<int> bankRevNow { 0 };
+    juce::String bankJsonLocked() const;
+    void saveBankFile (const std::map<int, juce::String>&) const;
     std::vector<acidseq::Out> seqOut;
     juce::MidiBuffer merged;
     std::atomic<int> seqStepNow { -1 };

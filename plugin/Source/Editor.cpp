@@ -38,7 +38,7 @@ AcidEditor::AcidEditor (AcidBassProcessor& p)
                .withResourceProvider ([this] (const auto& url) { return resource (url); })
                .withEventListener ("ready",   [this] (const juce::var&) { pushChanges (true); })
                .withEventListener ("set",     [this] (const juce::var& v) { bridge.setReal (v["id"].toString(), (float) (double) v["v"]); })
-               .withEventListener ("pattern", [this] (const juce::var& v) { proc.setPatternJson (v["json"].toString()); lastPattern = proc.getPatternJson(); })
+               .withEventListener ("pattern", [this] (const juce::var& v) { proc.setPatternSlot ((int) v["slot"], v["json"].toString(), (bool) v["base"]); lastBankRev = proc.bankRev(); })
                .withEventListener ("gesture", [this] (const juce::var& v) { bridge.gesture (v["id"].toString(), (bool) v["on"]); }))
 {
     addAndMakeVisible (web);
@@ -53,12 +53,14 @@ AcidEditor::~AcidEditor() { stopTimer(); bridge.endAllGestures(); }
 
 void AcidEditor::pushChanges (bool all)
 {
-    if (const auto pj = proc.getPatternJson(); all || pj != lastPattern)
+    if (const int rev = proc.bankRev(); all || rev != lastBankRev)
     {
-        lastPattern = pj;
+        lastBankRev = rev;
+        const auto bank = juce::JSON::parse (proc.getBankJson());
         auto* o = new juce::DynamicObject();
-        o->setProperty ("json", pj);
-        web.emitEventIfBrowserIsVisible ("pattern", juce::var (o));
+        o->setProperty ("cur", bank["cur"]);
+        o->setProperty ("overrides", bank["overrides"]);
+        web.emitEventIfBrowserIsVisible ("bank", juce::var (o));
     }
     if (const int st = proc.seqStep(); all || st != lastStep)
     {

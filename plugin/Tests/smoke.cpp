@@ -92,9 +92,13 @@ double corr (const std::vector<float>& a, const std::vector<float>& b, int x, in
     return ab / std::sqrt (aa * bb + 1e-20);
 }
 
+juce::File tmpDir() { return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("acid-smoke-bank"); }
+
 std::unique_ptr<AcidBassProcessor> make()
 {
+    static int n = 0;
     auto p = std::make_unique<AcidBassProcessor>();
+    p->setBankFile (tmpDir().getChildFile ("auto" + juce::String (n++) + ".json"));   // never the real user bank file
     p->setPlayConfigDetails (0, 2, sr, block);
     p->prepareToPlay (sr, block);
     return p;
@@ -570,6 +574,70 @@ int main()
             auto c = make();
             check (c->getPatternJson() == acidseq::toJson (acidseq::Pattern{}), "plugin sequencer: a fresh plugin holds the empty 16-step pattern");
         }
+    }
+    {   // pattern bank: 128 slots, overrides kept in the project and a user file
+        const auto dir = tmpDir(); dir.deleteRecursively(); dir.createDirectory();
+        const auto f1 = dir.getChildFile ("bank1.json");
+        const char* pa = R"J({"len":4,"steps":[{"gate":"note","note":0,"oct":0,"accent":false,"slide":false},{"gate":"note","note":2,"oct":0,"accent":false,"slide":false},{"gate":"note","note":4,"oct":0,"accent":false,"slide":false},{"gate":"note","note":5,"oct":0,"accent":false,"slide":false}]})J";
+        const char* pb = R"J({"len":2,"steps":[{"gate":"note","note":7,"oct":0,"accent":true,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false}]})J";
+        const auto ja = acidseq::toJson (acidseq::fromJson (pa)), jb = acidseq::toJson (acidseq::fromJson (pb));
+        auto overrideOf = [] (const juce::String& bank, int slot) { return juce::JSON::parse (bank)["overrides"][juce::Identifier (juce::String (slot))].toString(); };
+        auto isEmpty = [] (const juce::String& b) { const auto v = juce::JSON::parse (b); auto* o = v["overrides"].getDynamicObject(); return (int) v["cur"] == 0 && o != nullptr && o->getProperties().size() == 0; };
+        {
+            auto p = make(); p->setBankFile (f1);
+            const int r0 = p->bankRev();
+            p->setPatternSlot (5, pa, false);
+            check (overrideOf (p->getBankJson(), 5) == ja, "bank: an edit shows up in the bank json");
+            check (p->getCurSlot() == 5 && p->getPatternJson() == ja, "bank: the edited slot becomes current and plays");
+            check (p->bankRev() > r0, "bank: bankRev goes up on an edit");
+            const int r1 = p->bankRev();
+            p->setPatternSlot (5, pa, true);
+            check (overrideOf (p->getBankJson(), 5).isEmpty() && p->getCurSlot() == 5 && p->bankRev() > r1, "bank: base removes the override and bumps bankRev");
+            p->setPatternSlot (200, pb, false);
+            check (overrideOf (p->getBankJson(), 127) == jb && p->getCurSlot() == 127, "bank: a slot above 127 is clamped to 127");
+            p->setPatternSlot (-3, pb, false);
+            check (overrideOf (p->getBankJson(), 0) == jb && p->getCurSlot() == 0, "bank: a negative slot is clamped to 0");
+            p->setPatternJson (pa);
+            check (overrideOf (p->getBankJson(), 0) == ja, "bank: setPatternJson edits the current slot");
+        }
+        {
+            auto a = make(); a->setBankFile (dir.getChildFile ("bank2.json"));
+            a->setPatternSlot (7, pa, false); a->setPatternSlot (9, pb, false); a->setPatternSlot (3, pa, true);
+            juce::MemoryBlock mb; a->getStateInformation (mb);
+            auto b = make(); b->setBankFile (dir.getChildFile ("bank-other.json"));
+            const int r0 = b->bankRev();
+            b->setStateInformation (mb.getData(), (int) mb.getSize());
+            check (b->getCurSlot() == 3 && b->getPatternJson() == a->getPatternJson(), "bank: state restores the current slot and the playing pattern");
+            check (overrideOf (b->getBankJson(), 7) == ja && overrideOf (b->getBankJson(), 9) == jb && overrideOf (b->getBankJson(), 3).isEmpty(), "bank: state restores the overrides");
+            check (b->bankRev() > r0, "bank: restoring state bumps bankRev");
+        }
+        {
+            auto a = make(); a->setBankFile (f1);
+            a->setPatternSlot (11, pa, false);
+            check (f1.existsAsFile() && f1.loadFileAsString().contains ("\"11\""), "bank: an edit writes the user file");
+            auto b = make(); b->setBankFile (f1);
+            check (overrideOf (b->getBankJson(), 11) == ja, "bank: a fresh plugin reads the overrides from the file");
+            auto c = make(); c->setBankFile (dir.getChildFile ("none.json"));
+            c->setPatternSlot (11, pb, false);
+            juce::MemoryBlock mb; c->getStateInformation (mb);
+            const auto fileBefore = f1.loadFileAsString();
+            auto d = make(); d->setBankFile (f1);
+            d->setStateInformation (mb.getData(), (int) mb.getSize());
+            check (overrideOf (d->getBankJson(), 11) == jb, "bank: the project overrides win over the file for the same slot");
+            check (f1.loadFileAsString() == fileBefore, "bank: loading a project does not rewrite the file");
+        }
+        {
+            const auto bad = dir.getChildFile ("bad.json"); bad.replaceWithText ("{{ not json [[");
+            auto a = make(); a->setBankFile (bad);
+            check (isEmpty (a->getBankJson()), "bank: a garbage file leaves an empty bank");
+            auto st = make(); st->setBankFile (dir.getChildFile ("none2.json"));
+            st->apvts.state.setProperty ("bank", "}{ garbage", nullptr);
+            juce::MemoryBlock mb; st->getStateInformation (mb);
+            auto b = make(); b->setBankFile (dir.getChildFile ("none3.json"));
+            b->setStateInformation (mb.getData(), (int) mb.getSize());
+            check (isEmpty (b->getBankJson()), "bank: garbage bank in the state leaves an empty bank");
+        }
+        dir.deleteRecursively();
     }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
