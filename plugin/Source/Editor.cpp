@@ -34,14 +34,25 @@ AcidEditor::AcidEditor (AcidBassProcessor& p)
                .withWinWebView2Options (juce::WebBrowserComponent::Options::WinWebView2 {}
                    .withUserDataFolder (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("MyLilAcidBassline-webview")))
                .withNativeIntegrationEnabled()
-               .withResourceProvider ([this] (const auto& url) { return resource (url); }))
+               .withResourceProvider ([this] (const auto& url) { return resource (url); })
+               .withEventListener ("ready",   [this] (const juce::var&) { pushChanges (true); })
+               .withEventListener ("set",     [this] (const juce::var& v) { bridge.setReal (v["id"].toString(), (float) (double) v["v"]); })
+               .withEventListener ("gesture", [this] (const juce::var& v) { bridge.gesture (v["id"].toString(), (bool) v["on"]); }))
 {
     addAndMakeVisible (web);
     web.goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
     setResizable (true, true);
     setSize (820, 720);
+    startTimerHz (30);
 }
 
 AcidEditor::~AcidEditor() { stopTimer(); bridge.endAllGestures(); }
 
-void AcidEditor::pushChanges (bool) {}   // Task 4
+void AcidEditor::pushChanges (bool all)
+{
+    const auto changed = bridge.changes (all);
+    if (changed.empty()) return;
+    auto* o = new juce::DynamicObject();
+    for (const auto& [id, v] : changed) o->setProperty (juce::Identifier (id), (double) v);
+    web.emitEventIfBrowserIsVisible ("params", juce::var (o));
+}
