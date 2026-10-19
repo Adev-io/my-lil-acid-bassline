@@ -13,6 +13,17 @@ constexpr Asset assets[] = {
     { "/ui-bridge.js",      "uibridge_js",       "text/javascript" },
     { "/juce-frontend.js",  "jucefrontend_js",   "text/javascript" },
 };
+
+// Window size: the page's 790:970 shape, as big as the primary display allows once FL's own window chrome is taken off.
+constexpr int kW = 790, kH = 970, kMinW = 400, kChrome = 140;
+juce::Rectangle<int> fitToDisplay()
+{
+    int h = kH;
+    if (const auto* d = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+        h = juce::jlimit (juce::roundToInt (kMinW * (double) kH / kW), kH, d->userBounds.getHeight() - kChrome);
+    return { juce::roundToInt (h * (double) kW / kH), h };
+}
+
 }
 
 std::optional<juce::WebBrowserComponent::Resource> AcidEditor::resource (const juce::String& url)
@@ -43,9 +54,11 @@ AcidEditor::AcidEditor (AcidBassProcessor& p)
 {
     addAndMakeVisible (web);
     web.goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
-    setResizeLimits (410, 480, 1100, 1100);
+    setResizeLimits (kMinW, juce::roundToInt (kMinW * (double) kH / kW), kW, kH);
     setResizable (true, true);
-    setSize (790, 970);
+    getConstrainer()->setFixedAspectRatio ((double) kW / kH);
+    const auto size = fitToDisplay();
+    setSize (size.getWidth(), size.getHeight());
     startTimerHz (30);
 }
 
