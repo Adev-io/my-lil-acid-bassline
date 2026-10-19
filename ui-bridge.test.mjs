@@ -52,12 +52,16 @@ test('every web knob either has a real plugin parameter or is listed as NONE, an
 
 test('the switches the bridge carries exist in the plugin', () => {
   const cpp = read('./plugin/Source/PluginProcessor.cpp');
-  for (const id of ['wave', 'dron', 'drtype', 'rvon', 'dpp']) assert.ok(new RegExp(`["']${id}["']`).test(cpp), id);
+  for (const id of ['wave', 'dron', 'drtype', 'rvon', 'dpp', 'swing', 'seqon']) assert.ok(new RegExp(`["']${id}["']`).test(cpp), id);
 });
 
 test('fitZoom scales the page down to the window and never up', () => {
-  assert.equal(M.fitZoom(1000, 900), 1);
+  assert.equal(M.fitZoom(1000, 1000), 1);
   assert.equal(M.fitZoom(402.5, 900), 0.5);
-  assert.equal(M.fitZoom(1000, 374), 0.5);
+  assert.equal(M.fitZoom(1000, 480), 0.5);
   assert.equal(M.fitZoom(10, 10), 0.3);
+});
+
+test('only tempo is left without a plugin parameter (swing and seqon are switches, gate is real)', () => {
+  assert.equal(JSON.stringify(M.NONE), '["tempo"]');
 });

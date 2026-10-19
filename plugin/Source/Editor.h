@@ -18,6 +18,9 @@ private:
     void pushChanges (bool all);
     void timerCallback() override { pushChanges (false); }
 
+    AcidBassProcessor& proc;
+    juce::String lastPattern;
+    int lastStep = -2;
     ParamBridge bridge;
     juce::WebBrowserComponent web;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AcidEditor)

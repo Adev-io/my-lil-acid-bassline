@@ -28,7 +28,7 @@ std::optional<juce::WebBrowserComponent::Resource> AcidEditor::resource (const j
 }
 
 AcidEditor::AcidEditor (AcidBassProcessor& p)
-    : AudioProcessorEditor (&p), bridge (p),
+    : AudioProcessorEditor (&p), proc (p), bridge (p),
       web (juce::WebBrowserComponent::Options {}
                .withBackend (juce::WebBrowserComponent::Options::Backend::webview2)
                .withWinWebView2Options (juce::WebBrowserComponent::Options::WinWebView2 {}
@@ -37,13 +37,14 @@ AcidEditor::AcidEditor (AcidBassProcessor& p)
                .withResourceProvider ([this] (const auto& url) { return resource (url); })
                .withEventListener ("ready",   [this] (const juce::var&) { pushChanges (true); })
                .withEventListener ("set",     [this] (const juce::var& v) { bridge.setReal (v["id"].toString(), (float) (double) v["v"]); })
+               .withEventListener ("pattern", [this] (const juce::var& v) { proc.setPatternJson (v["json"].toString()); lastPattern = proc.getPatternJson(); })
                .withEventListener ("gesture", [this] (const juce::var& v) { bridge.gesture (v["id"].toString(), (bool) v["on"]); }))
 {
     addAndMakeVisible (web);
     web.goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
-    setResizeLimits (410, 375, 1100, 1000);
+    setResizeLimits (410, 480, 1100, 1100);
     setResizable (true, true);
-    setSize (815, 755);
+    setSize (790, 910);
     startTimerHz (30);
 }
 
@@ -51,6 +52,20 @@ AcidEditor::~AcidEditor() { stopTimer(); bridge.endAllGestures(); }
 
 void AcidEditor::pushChanges (bool all)
 {
+    if (const auto pj = proc.getPatternJson(); all || pj != lastPattern)
+    {
+        lastPattern = pj;
+        auto* o = new juce::DynamicObject();
+        o->setProperty ("json", pj);
+        web.emitEventIfBrowserIsVisible ("pattern", juce::var (o));
+    }
+    if (const int st = proc.seqStep(); all || st != lastStep)
+    {
+        lastStep = st;
+        auto* o = new juce::DynamicObject();
+        o->setProperty ("i", st);
+        web.emitEventIfBrowserIsVisible ("step", juce::var (o));
+    }
     const auto changed = bridge.changes (all);
     if (changed.empty()) return;
     auto* o = new juce::DynamicObject();
