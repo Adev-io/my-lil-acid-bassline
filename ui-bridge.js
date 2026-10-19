@@ -12,12 +12,12 @@
     fdec: { id: 'decay', to: (v) => T.decSec(v), from: (s) => Math.log(Math.max(s, 0.03) / 0.03) / Math.log(83) },
   };
   // Web knobs the plugin has no parameter for yet (envelope, gate, tempo); the page hides them inside the plugin.
-  const NONE = ['tempo', 'fatk', 'fsus', 'frel', 'aatk', 'adec', 'asus', 'arel', 'gate'];
+  const NONE = ['tempo', 'gate'];
   const idOf = (key) => (REAL[key] ? REAL[key].id : key);
   const toPlugin = (key, v) => (REAL[key] ? REAL[key].to(v) : v);
   const fromPlugin = (key, x) => clamp01(REAL[key] ? REAL[key].from(x) : x);
   // The page's natural size in the plugin (sequencer parts hidden). A smaller window scales the page down to fit, never up.
-  const NAT_W = 810, NAT_H = 750;
+  const NAT_W = 805, NAT_H = 748;
   const fitZoom = (w, h) => Math.min(1, Math.max(0.3, Math.min(w / NAT_W, h / NAT_H)));
   window.PluginMap = { NONE, idOf, toPlugin, fromPlugin, fitZoom };
 
@@ -28,7 +28,7 @@
   const st = document.createElement('style');
   st.textContent = '.plug .seq,.plug #midiBtn,.plug #midiIn,.plug #midiMsg,.plug #autoBtn,.plug #dFat,.plug #dSync,.plug .envc,'
     + '.plug .sect:has(#keys),.plug #steps,.plug #steps+div,.plug .sect:has(#gBank),.plug .sect:has(#run),.plug .sect:has(#song),'
-    + '.plug div:has(>#io),.plug .grp:has(#swing),.plug .grp:has(#sync),.plug .grp:has(#dMs),.plug .eg:has(#envG),.plug .eg:has(#envA),.plug .kw.nop{display:none!important}';
+    + '.plug div:has(>#io),.plug .grp:has(#swing),.plug .grp:has(#sync),.plug .grp:has(#dMs),.plug .eg:has(#envG),.plug .kw.nop{display:none!important}';
   document.head.append(st);
   const fit = () => { document.body.style.zoom = fitZoom(innerWidth, innerHeight); };
   fit(); addEventListener('resize', fit);
