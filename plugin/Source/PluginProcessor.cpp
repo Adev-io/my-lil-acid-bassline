@@ -8,6 +8,7 @@ AcidBassProcessor::AcidBassProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "STATE", createLayout())
 {
+    apvts.state.setProperty ("pattern", acidseq::toJson (pattern), nullptr);   // a fresh state carries the (empty) pattern
     startTimerHz (4);   // the IR rebuilds at most 4 times a second, like the web page
 }
 
@@ -47,7 +48,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidBassProcessor::createLay
     l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "rvon", 1 }, "Reverb On", false));
     knob ("rvpre", "Reverb Pre-delay", 0.0f); knob ("rvsize", "Reverb Size", 0.5f); knob ("rvdec", "Reverb Decay", 0.5f); knob ("rvdamp", "Reverb Hi Damp", 0.5f);
     knob ("rvlow", "Reverb Low Cut", 0.0f); knob ("rvhigh", "Reverb Hi Cut", 1.0f); knob ("rvwid", "Reverb Width", 1.0f); knob ("rvdry", "Reverb Dry", 1.0f); knob ("rvwet", "Reverb Wet", 0.0f);
+    l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "seqon", 1 }, "Sequencer On", false));
+    knob ("swing", "Swing", 0.0f); knob ("gate", "Gate Length", 0.5f);
     return l;
+}
+
+void AcidBassProcessor::setPatternJson (const juce::String& json)
+{
+    const auto p = acidseq::fromJson (json);
+    { const juce::SpinLock::ScopedLockType l (patternLock); pattern = p; }
+    apvts.state.setProperty ("pattern", acidseq::toJson (p), nullptr);
+}
+
+juce::String AcidBassProcessor::getPatternJson() const
+{
+    const juce::SpinLock::ScopedLockType l (patternLock);
+    return acidseq::toJson (pattern);
 }
 
 AcidParams AcidBassProcessor::currentParams() const
@@ -69,6 +85,7 @@ void AcidBassProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     drive.prepare (sampleRate);
     delay.prepare (sampleRate);
     reverb.prepare (sampleRate, samplesPerBlock); irKey = -1; refreshReverbIR();
+    seqOut.reserve (256); merged.ensureSize (4096);
 }
 
 void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -79,8 +96,27 @@ void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const auto p = currentParams();
     float* out = buffer.getWritePointer (0);
 
+    bool playing = false; double bpm = 120.0, ppq = 0.0;
+    if (auto* ph = getPlayHead())
+        if (auto hp = ph->getPosition())
+        {
+            playing = hp->getIsPlaying() && hp->getPpqPosition().hasValue();
+            bpm = hp->getBpm().orFallback (120.0); ppq = hp->getPpqPosition().orFallback (0.0);
+        }
+    { const juce::SpinLock::ScopedTryLockType l (patternLock); if (l.isLocked()) audioPattern = pattern; }
+    acidseq::Settings ss;
+    ss.on = apvts.getRawParameterValue ("seqon")->load() > 0.5f;
+    ss.swing = apvts.getRawParameterValue ("swing")->load();
+    ss.gateFrac = (float) acidmaps::gateFrac (apvts.getRawParameterValue ("gate")->load());
+    seqEngine.process (audioPattern, ss, playing, ppq, bpm, n, getSampleRate(), seqOut);
+    seqStepNow.store (seqEngine.currentStep());
+    // ponytail: merged and seqOut allocate only on the first big block (prepareToPlay reserves room; they grow only if a host sends more events than that)
+    merged.clear(); merged.addEvents (midi, 0, n, 0);
+    for (const auto& e : seqOut)
+        merged.addEvent (e.on ? juce::MidiMessage::noteOn (1, e.note, e.velocity) : juce::MidiMessage::noteOff (1, e.note), e.sample);
+
     int pos = 0;
-    for (const auto meta : midi)
+    for (const auto meta : merged)
     {
         const int at = juce::jlimit (pos, n, meta.samplePosition);
         if (at > pos) voice.render (out + pos, at - pos, p);
@@ -132,7 +168,10 @@ void AcidBassProcessor::getStateInformation (juce::MemoryBlock& dest)
 void AcidBassProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
-        if (xml->hasTagName (apvts.state.getType())) apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        if (xml->hasTagName (apvts.state.getType())) {
+            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+            setPatternJson (apvts.state.getProperty ("pattern", acidseq::toJson (acidseq::Pattern{})).toString());
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new AcidBassProcessor(); }

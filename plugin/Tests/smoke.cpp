@@ -509,6 +509,68 @@ int main()
             check (toJson (p) == want, "sequencer: toJson(fromJson(x)) is the text JSON.stringify(cleanPattern(x)) gives");
         }
     }
+
+    {   // processor integration: the sequencer plays through the voice from the host clock
+        struct Head : juce::AudioPlayHead
+        {
+            bool playing = true; double bpm = 120.0, ppq = 0.0;
+            juce::Optional<PositionInfo> getPosition() const override
+            {
+                PositionInfo i; i.setIsPlaying (playing); i.setBpm (bpm); i.setPpqPosition (ppq); return i;
+            }
+        };
+        const char* pat = R"J({"len":4,"steps":[{"gate":"note","note":0,"oct":0,"accent":false,"slide":false},{"gate":"note","note":2,"oct":0,"accent":false,"slide":false},{"gate":"note","note":4,"oct":0,"accent":false,"slide":false},{"gate":"note","note":5,"oct":0,"accent":false,"slide":false}]})J";
+        // One beat (22050 samples) of 512-sample blocks from ppq 0; returns the peak. extra feeds MIDI in the first block.
+        auto peakOf = [&] (AcidBassProcessor& p, Head& h, bool midiNote)
+        {
+            float peak = 0.0f; h.ppq = 0.0;
+            for (int s = 0; s < 22050; s += block)
+            {
+                juce::AudioBuffer<float> buf (2, block); juce::MidiBuffer m;
+                if (midiNote && s == 0) m.addEvent (juce::MidiMessage::noteOn (1, 45, (juce::uint8) 100), 0);
+                p.processBlock (buf, m);
+                peak = std::max (peak, buf.getMagnitude (0, block));
+                h.ppq += block * h.bpm / 60.0 / sr;
+            }
+            return peak;
+        };
+        auto flag = [] (AcidBassProcessor& p, const char* id, float v) { setParam (p, id, v); };
+        {
+            auto p = make();
+            auto* seqon = p->apvts.getParameter ("seqon"); auto* swing = p->apvts.getParameter ("swing"); auto* gate = p->apvts.getParameter ("gate");
+            check (seqon && swing && gate, "plugin sequencer: seqon, swing and gate parameters exist");
+            if (seqon && swing && gate)
+                check (seqon->getValue() == 0.0f && swing->getValue() == 0.0f && std::abs (gate->getValue() - 0.5f) < 1e-6f, "plugin sequencer: defaults are off, 0 and 0.5");
+        }
+        {
+            Head h; auto p = make(); p->setPlayHead (&h); p->setPatternJson (pat);
+            flag (*p, "seqon", 1.0f);
+            const float on = peakOf (*p, h, false);
+            auto q = make(); q->setPlayHead (&h); q->setPatternJson (pat);
+            const float off = peakOf (*q, h, false);
+            check (on > 0.05f, "plugin sequencer: on and playing makes sound", on);
+            check (off < 1e-6f, "plugin sequencer: off is silent", off);
+            auto r = make(); r->setPlayHead (&h); r->setPatternJson (pat); flag (*r, "seqon", 1.0f);
+            h.playing = false;
+            const float stopped = peakOf (*r, h, false);
+            check (stopped < 1e-6f, "plugin sequencer: on but host stopped is silent", stopped);
+            auto t = make(); t->setPlayHead (&h); t->setPatternJson (pat); flag (*t, "seqon", 1.0f);
+            const float withMidi = peakOf (*t, h, true);
+            check (withMidi > 0.05f, "plugin sequencer: piano-roll MIDI plays with the host stopped and Seq on", withMidi);
+            h.playing = true;
+            auto u = make(); u->setPlayHead (&h); u->setPatternJson (pat); flag (*u, "seqon", 1.0f);
+            check (peakOf (*u, h, true) > 0.05f, "plugin sequencer: piano-roll MIDI plays alongside the sequencer", peakOf (*u, h, true));
+            std::printf ("     peak seq on %g, off %g\n", on, off);
+        }
+        {
+            auto a = make(); a->setPatternJson (pat);
+            juce::MemoryBlock mb; a->getStateInformation (mb);
+            auto b = make(); b->setStateInformation (mb.getData(), (int) mb.getSize());
+            check (a->getPatternJson() == b->getPatternJson() && b->getPatternJson().contains ("\"len\":4"), "plugin sequencer: the pattern survives save and load");
+            auto c = make();
+            check (c->getPatternJson() == acidseq::toJson (acidseq::Pattern{}), "plugin sequencer: a fresh plugin holds the empty 16-step pattern");
+        }
+    }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
 }

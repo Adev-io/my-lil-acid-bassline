@@ -6,6 +6,7 @@
 #include "DriveStage.h"
 #include "DelayStage.h"
 #include "ReverbStage.h"
+#include "Sequencer.h"
 
 class AcidBassProcessor final : public juce::AudioProcessor, private juce::Timer
 {
@@ -44,6 +45,10 @@ public:
     // IDs match the web page's knob names where there is one (cutoff, res, envmod, accent, volume, tuning).
     juce::AudioProcessorValueTreeState apvts;
 
+    void setPatternJson (const juce::String&);
+    juce::String getPatternJson() const;
+    int seqStep() const { return seqStepNow.load(); }
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     AcidParams currentParams() const;
@@ -55,5 +60,11 @@ private:
     ReverbStage reverb;
     int irKey = -1;
     std::vector<float> dlyL, dlyR;
+    acidseq::Engine seqEngine;
+    acidseq::Pattern pattern, audioPattern;
+    mutable juce::SpinLock patternLock;
+    std::vector<acidseq::Out> seqOut;
+    juce::MidiBuffer merged;
+    std::atomic<int> seqStepNow { -1 };
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AcidBassProcessor)
 };
