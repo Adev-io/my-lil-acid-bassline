@@ -3,6 +3,7 @@
 #include "PluginProcessor.h"
 #include "Maps.h"
 #include "ParamBridge.h"
+#include "Sequencer.h"
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -398,6 +399,115 @@ int main()
         check (b.changes (true).size() == all.size(), "changes(true) lists everything again");
         b.gesture ("res", true); b.gesture ("res", true); b.gesture ("res", false); b.gesture ("res", false); b.endAllGestures();
         check (true, "repeated gestures do not upset the host");
+    }
+    {   // the step sequencer engine (Sequencer.h): no host, so ppq, bpm and blocks are driven by hand
+        using namespace acidseq;
+        check (std::abs (acidmaps::gateFrac (0.5) - 0.55) < 1e-9 && acidmaps::gateFrac (0.0) == 0.1 && acidmaps::gateFrac (1.0) == 1.0, "gateFrac maps 0, 0.5, 1 to 0.1, 0.55, 1.0", acidmaps::gateFrac (0.5));
+
+        auto note = [] (int n, int o = 0, bool acc = false, bool sl = false) { Step s; s.gate = Gate::Note; s.note = n; s.oct = o; s.accent = acc; s.slide = sl; return s; };
+        auto tie = [] { Step s; s.gate = Gate::Tie; return s; };
+        auto rest = [] { return Step(); };
+        auto pat = [] (std::initializer_list<Step> l) { Pattern p; p.len = (int) l.size(); int i = 0; for (const auto& s : l) p.steps[i++] = s; return p; };
+        struct Ev { bool on; long long at; int note; float vel; };
+        // Runs blocks of the given sizes back to back from ppq 0 and returns events at absolute sample positions.
+        auto run = [] (const Pattern& p, Settings st, double bpm, std::vector<int> sizes) {
+            Engine e; std::vector<Out> o; std::vector<Ev> all; long long pos = 0;
+            for (int n : sizes)
+            {
+                e.process (p, st, true, (double) pos * bpm / 60.0 / 44100.0, bpm, n, 44100.0, o);
+                for (const auto& x : o) all.push_back ({ x.on, pos + x.sample, x.note, x.velocity });
+                pos += n;
+            }
+            return all;
+        };
+        auto ons = [] (const std::vector<Ev>& v) { std::vector<Ev> r; for (const auto& e : v) if (e.on) r.push_back (e); return r; };
+        auto offs = [] (const std::vector<Ev>& v) { std::vector<Ev> r; for (const auto& e : v) if (! e.on) r.push_back (e); return r; };
+        Settings on; on.on = true; on.swing = 0.0f; on.gateFrac = 0.55f;
+        const double stepS = 5512.5;   // one 16th at 120 bpm, 44.1 kHz
+
+        const Pattern four = pat ({ note (0), note (2), note (4), note (5) });
+        const auto t = run (four, on, 120.0, { 22050 });
+        const auto tOn = ons (t), tOff = offs (t);
+        const long long wantOn[4] = { 0, 5512, 11025, 16537 }; const int wantMidi[4] = { 36, 38, 40, 41 };
+        bool timing = tOn.size() == 4; for (size_t i = 0; timing && i < 4; ++i) timing = std::abs (tOn[i].at - wantOn[i]) <= 1 && tOn[i].note == wantMidi[i];
+        check (timing, "sequencer: four notes start on the 16ths with the right pitches", (double) tOn.size());
+        bool gateOk = tOff.size() == 4; for (size_t i = 0; gateOk && i < 4; ++i) gateOk = std::abs (tOff[i].at - (tOn[i].at + 3032)) <= 1 && (i == 3 || tOff[i].at < tOn[i + 1].at) && tOff[i].note == tOn[i].note;
+        check (gateOk, "sequencer: each note ends 0.55 of a step after it starts");
+
+        const auto r = run (pat ({ note (0), rest(), note (0), rest() }), on, 120.0, { 22050 });
+        check (ons (r).size() == 2 && offs (r).size() == 2 && r.size() == 4, "sequencer: rests make no events", (double) r.size());
+
+        const auto a = ons (run (pat ({ note (0, 0, true), note (0) }), on, 120.0, { 11025 }));
+        check (a.size() == 2 && a[0].vel >= 110.0f / 127.0f && a[1].vel < 110.0f / 127.0f, "sequencer: an accent is loud, a plain step is not", a.empty() ? 0.0 : a[0].vel);
+
+        const auto sl = run (pat ({ note (0, 0, false, true), note (2), rest(), rest() }), on, 120.0, { 22050 });
+        {   // events at D's start: NoteOn D then NoteOff C, same sample, and no NoteOff of C earlier
+            int iOnD = -1, iOffC = -1, offCBefore = 0;
+            for (size_t i = 0; i < sl.size(); ++i)
+            {
+                if (sl[i].on && sl[i].note == 38) iOnD = (int) i;
+                if (! sl[i].on && sl[i].note == 36 && iOffC < 0) iOffC = (int) i;
+            }
+            for (int i = 0; i < iOnD; ++i) if (! sl[(size_t) i].on && sl[(size_t) i].note == 36) ++offCBefore;
+            check (iOnD >= 0 && iOffC == iOnD + 1 && sl[(size_t) iOffC].at == sl[(size_t) iOnD].at && offCBefore == 0, "sequencer: a slide plays the new note first, then lets the old one go", (double) iOffC);
+        }
+
+        const auto ti = run (pat ({ note (0), tie(), rest(), rest() }), on, 120.0, { 22050 });
+        {
+            const auto o = ons (ti), f = offs (ti);
+            check (o.size() == 1 && f.size() == 1 && f[0].note == 36 && std::abs (f[0].at - (long long) (stepS + 0.95 * stepS)) <= 1, "sequencer: a tie holds the note and ends 0.95 into its own step", f.empty() ? 0.0 : (double) f[0].at);
+        }
+
+        const auto oc = ons (run (pat ({ note (0, 1), note (0, -1) }), on, 120.0, { 11025 }));
+        check (oc.size() == 2 && oc[0].note == 48 && oc[1].note == 24, "sequencer: octave +1 adds 12, -1 subtracts 12", oc.empty() ? 0.0 : oc[0].note);
+
+        {   // stop: a playing=false block after a sounding note releases it once at sample 0
+            Engine e; std::vector<Out> o; const Pattern p = pat ({ note (0, 0, false, true), note (2, 0, false, true) });   // slides: no gate-off, stays sounding
+            e.process (p, on, true, 0.0, 120.0, 4000, 44100.0, o);
+            e.process (p, on, false, 0.2, 120.0, 512, 44100.0, o);
+            const bool one = o.size() == 1 && ! o[0].on && o[0].sample == 0;
+            e.process (p, on, false, 0.2, 120.0, 512, 44100.0, o);
+            check (one && o.empty() && e.currentStep() == -1, "sequencer: stopping releases the note once, then silence", (double) o.size());
+        }
+        {   // jump: after a block ending at ppq 2.0, a block at ppq 0 (loop) releases at 0, then step 0 starts at 0
+            Engine e; std::vector<Out> o; const Pattern p = pat ({ note (0, 0, false, true), note (2, 0, false, true), note (4, 0, false, true), note (5, 0, false, true) });
+            e.process (p, on, true, 1.0, 120.0, 22050, 44100.0, o);   // 22050 samples at 120 bpm = 1 quarter, so this ends at ppq 2.0
+            e.process (p, on, true, 0.0, 120.0, 512, 44100.0, o);
+            check (o.size() == 2 && ! o[0].on && o[0].sample == 0 && o[1].on && o[1].sample == 0 && o[1].note == 36, "sequencer: a position jump releases, then restarts step 0 at once", (double) o.size());
+        }
+
+        Settings sw = on; sw.swing = 1.0f;
+        const auto sv = ons (run (pat ({ note (0), note (2) }), sw, 120.0, { 11025 }));
+        check (sv.size() == 2 && std::abs (sv[1].at - (long long) (stepS + 0.33 * stepS)) <= 1, "sequencer: swing 1.0 delays the odd step by 0.33 of a step", sv.size() > 1 ? (double) sv[1].at : 0.0);
+        {   // swing 1, gate 1.0: odd step 1 would end a full step after its swung start, past step 2's start; the old note must not end after the new one starts
+            Settings s2 = sw; s2.gateFrac = 1.0f;
+            const auto e2 = run (pat ({ note (0), note (2), note (4), rest() }), s2, 120.0, { 22050 });
+            bool dropped = true; long long onNext = -1; int offs38 = 0;
+            for (const auto& x : e2) if (x.on && x.note == 40) onNext = x.at;
+            for (const auto& x : e2) if (! x.on && x.note == 38) { ++offs38; if (x.at > onNext) dropped = false; }
+            check (onNext > 0 && dropped && offs38 == 1, "sequencer: a swung note's late gate-off does not land after the next note-on", (double) onNext);
+        }
+
+        {   // block-split invariance
+            const Pattern p = pat ({ note (0, 0, true), note (2, 0, false, true), note (4), tie(), note (5), rest(), note (7, 1), note (9) });
+            Settings s3 = on; s3.swing = 0.5f;
+            const auto one = run (p, s3, 120.0, { 22050 });
+            std::vector<int> sizes; for (int i = 0; i < 8; ++i) sizes.push_back ((i % 2) ? 2757 : 2756);   // 22052 samples; compare events before 22000 so the longer run's extra tail is not counted
+            const auto many = run (p, s3, 120.0, sizes);
+            auto firstN = [&] (const std::vector<Ev>& v) { std::vector<Ev> q; for (const auto& e : v) if (e.at < 22000) q.push_back (e); return q; };
+            const auto A = firstN (one), B = firstN (many);
+            bool same = A.size() == B.size() && ! A.empty();
+            for (size_t i = 0; same && i < A.size(); ++i) same = A[i].on == B[i].on && A[i].note == B[i].note && std::abs (A[i].at - B[i].at) <= 1;
+            check (same, "sequencer: the same audio in 8 blocks gives the same events as in one", (double) B.size());
+        }
+
+        {   // JSON: clamps like the web's cleanPattern, and round-trips to the same text (expected string made by node from acidbass.js)
+            const juce::String in = R"J({"len":99,"steps":[{"gate":"note","note":99,"oct":5,"accent":true,"slide":true},{"gate":"bogus","note":3,"oct":-1},{"gate":"tie","note":7,"oct":-1,"accent":true},{"gate":"note","note":2.4,"oct":0,"slide":"yes"}]})J";
+            const Pattern p = fromJson (in);
+            check (p.len == 32 && p.steps[0].note == 12 && p.steps[0].oct == 1 && p.steps[1].gate == Gate::Rest && p.steps[10].gate == Gate::Rest, "sequencer: fromJson clamps len, note, oct and unknown gates");
+            const juce::String want = R"J({"len":32,"steps":[{"gate":"note","note":12,"oct":1,"accent":true,"slide":true},{"gate":"rest","note":3,"oct":-1,"accent":false,"slide":false},{"gate":"tie","note":7,"oct":-1,"accent":true,"slide":false},{"gate":"note","note":2,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false},{"gate":"rest","note":0,"oct":0,"accent":false,"slide":false}]})J";
+            check (toJson (p) == want, "sequencer: toJson(fromJson(x)) is the text JSON.stringify(cleanPattern(x)) gives");
+        }
     }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
