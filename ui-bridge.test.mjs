@@ -57,7 +57,7 @@ test('the switches the bridge carries exist in the plugin', () => {
 
 test('fitZoom scales the page down to the window and never up', () => {
   assert.equal(M.fitZoom(1000, 900), 1);
-  assert.equal(M.fitZoom(405, 900), 0.5);
-  assert.equal(M.fitZoom(1000, 375), 0.5);
+  assert.equal(M.fitZoom(402.5, 900), 0.5);
+  assert.equal(M.fitZoom(1000, 374), 0.5);
   assert.equal(M.fitZoom(10, 10), 0.3);
 });
