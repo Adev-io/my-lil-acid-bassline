@@ -2,6 +2,8 @@
 // Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see ../LICENSE)
 #include "PluginProcessor.h"
 #include "Maps.h"
+#include "ParamBridge.h"
+#include <cmath>
 #include <cstdio>
 #include <vector>
 
@@ -328,6 +330,26 @@ int main()
         auto [ml, mr] = renderStereo (*monoP, 1.0, one);
         check (corr (ml, mr, t0, t1) > 0.99, "width 0 makes the tail mono", corr (ml, mr, t0, t1));
         check (corr (wl, wr, t0, t1) < 0.5, "full width keeps the tail stereo", corr (wl, wr, t0, t1));
+    }
+    {   // the UI bridge: values by id, in plugin units, with no echo
+        auto p = make();
+        ParamBridge b (*p);
+        const auto all = b.changes();
+        check (all.size() == (size_t) p->getParameters().size(), "the first poll lists every parameter", (double) all.size());
+        check (b.changes().empty(), "a second poll with nothing moved is empty");
+        check (b.setReal ("cutoff", 1000.0f), "setReal takes a known id");
+        const float cut = p->apvts.getRawParameterValue ("cutoff")->load();
+        check (std::abs (cut - 1000.0f) < 0.5f, "setReal moves the real parameter, in Hz", cut);
+        check (b.changes().empty(), "a value the UI set is not echoed back");
+        setParam (*p, "res", 0.9f);
+        const auto moved = b.changes();
+        check (moved.size() == 1 && moved[0].first == "res" && std::abs (moved[0].second - 0.9f) < 1e-3f, "a host change is reported", moved.empty() ? 0.0 : moved[0].second);
+        check (b.changes().empty(), "and only once");
+        check (b.setReal ("wave", 1.0f) && p->apvts.getRawParameterValue ("wave")->load() > 0.5f, "a choice takes its index");
+        check (! b.setReal ("nope", 1.0f), "an unknown id is refused");
+        check (b.changes (true).size() == all.size(), "changes(true) lists everything again");
+        b.gesture ("res", true); b.gesture ("res", true); b.gesture ("res", false); b.gesture ("res", false); b.endAllGestures();
+        check (true, "repeated gestures do not upset the host");
     }
     std::printf ("%d failure(s)\n", failures);
     return failures == 0 ? 0 : 1;
