@@ -4,7 +4,7 @@
 
 The web version's sound as a real plugin: a monophonic acid bass instrument that plays from FL Studio's piano roll, with every knob a host parameter you can automate.
 
-**Status: phase 1.** The voice, the tweaks, the drive, the delay and the reverb work, with a plain generic panel. Not yet in the plugin: the filter/amp ADSR, gate length, delay Fat and tempo Sync, presets, the 32-step sequencer and the custom panel. They come from the web version in later phases (the roadmap below).
+**Status: phase 2.** The voice, the tweaks, the drive, the delay, the reverb and the filter and amp ADSR work, and the window is the web page's panel (WebView2). Not yet in the plugin: gate length, delay Fat and tempo Sync, presets and the 32-step sequencer. They come from the web version in later phases (the roadmap below).
 
 ## What works now
 
@@ -22,10 +22,11 @@ The web version's sound as a real plugin: a monophonic acid bass instrument that
 - **Drive:** on, type (soft, tube, wavefold), drive, HP, tone, volume, mix. Runs at 4x oversampling.
 - **Delay:** time, feedback, mix, tone, stereo, ping-pong.
 - **Reverb:** on, pre-delay, size, decay, hi damp, low cut, hi cut, width, dry, wet.
+- **Envelopes:** filter attack, decay (the Decay knob), sustain and release; amp attack, decay, sustain and release.
 
-All knobs are 0..1 and automatable, and they are named like the web app's knobs. The window is still the host's generic knob list, not the web page's panel.
+All knobs are 0..1 and automatable, and they are named like the web app's knobs. The window is the web page's panel in a WebView2 (the Evergreen runtime ships with Windows 11; Windows 10 may need it from Microsoft). The step grid, keyboard, tempo and gate length are hidden there. A build without WebView2 falls back to the host's generic knob list.
 
-**Not in the plugin yet:** delay Fat and tempo Sync, presets, and the full filter and amp envelopes (the ADSR knobs of the web version). The window is also still the generic list.
+**Not in the plugin yet:** gate length, delay Fat and tempo Sync, presets, and the sequencer.
 
 ## Build
 
@@ -46,9 +47,9 @@ It fetches JUCE 9.0.4, builds the VST3 and a standalone app, and runs a headless
 ## Roadmap
 
 1. **Voice and parameters** (done): sound, MIDI, slide, accent, state.
-2. **Match the web version:** filter and amp ADSR, gate length, the ping-pong / fat / tempo-synced delay (reading the host tempo).
+2. **Match the web version:** filter and amp ADSR (done), gate length, the fat / tempo-synced delay (reading the host tempo).
 3. **Sequencer:** port the 32-step sequencer so it runs on the host clock; keep the `.txt` / `.mid` export.
-4. **Panel:** the web page's look, as the plugin window.
+4. **Panel** (done): the web page's look, as the plugin window.
 5. **Release:** installer, GitHub Release, and (optional) a code-signing certificate so Windows does not warn on install.
 
 ## Known differences

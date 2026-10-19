@@ -61,7 +61,7 @@ Your patterns and knob settings are saved in your browser, under their own key, 
 
 ## FL Studio plugin
 
-[`plugin/`](plugin/) is a native VST3 version built on JUCE, for FL Studio and other hosts. It is in progress (phase 1: voice, parameters, MIDI, slide, accent); see [plugin/README.md](plugin/README.md) for what works, how to build it and how to install it in FL.
+[`plugin/`](plugin/) is a native VST3 version built on JUCE, for FL Studio and other hosts. It is in progress (phase 2: voice, parameters, MIDI, slide, accent, drive, delay, reverb, envelopes, and the web page as the window); see [plugin/README.md](plugin/README.md) for what works, how to build it and how to install it in FL.
 
 ## Develop
 
