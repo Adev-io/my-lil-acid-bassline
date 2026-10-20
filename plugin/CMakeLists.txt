@@ -1,4 +1,4 @@
-# My lil acid bassline: VST3 instrument (and a standalone app) built on JUCE.
+# My lil acid bass: VST3 instrument (and a standalone app) built on JUCE.
 # Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see LICENSE)
 cmake_minimum_required(VERSION 3.22)
 project(MyLilAcidBassline VERSION 0.1.0)
@@ -21,7 +21,7 @@ juce_add_plugin(MyLilAcidBassline
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     NEEDS_WEBVIEW2 TRUE
-    PRODUCT_NAME "My lil acid bassline"
+    PRODUCT_NAME "My lil acid bass"
     VST3_CATEGORIES Instrument Synth
     COPY_PLUGIN_AFTER_BUILD FALSE)
 

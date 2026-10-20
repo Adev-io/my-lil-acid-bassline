@@ -1,4 +1,4 @@
-# My lil acid bassline: VST3 for FL Studio (in progress)
+# My lil acid bass: VST3 for FL Studio (in progress)
 
 **by A_Development**
 
@@ -36,12 +36,12 @@ Needs CMake, Ninja, and Visual Studio (or the free Build Tools) with the "Deskto
 plugin\build.bat
 ```
 
-It fetches JUCE 9.0.4, builds the VST3 and a standalone app, and runs a headless smoke test that plays MIDI through the real processor and checks the audio (pitch, release, cutoff, envelope, accent, slide, saved state). The plugin lands in `plugin\build\MyLilAcidBassline_artefacts\Release\VST3\My lil acid bassline.vst3`.
+It fetches JUCE 9.0.4, builds the VST3 and a standalone app, and runs a headless smoke test that plays MIDI through the real processor and checks the audio (pitch, release, cutoff, envelope, accent, slide, saved state). The plugin lands in `plugin\build\MyLilAcidBassline_artefacts\Release\VST3\My lil acid bass.vst3`.
 
 ## Install in FL Studio
 
-1. Copy `My lil acid bassline.vst3` to `C:\Program Files\Common Files\VST3\` (needs admin).
-2. In FL Studio: **Options > Manage plugins**, then **Find installed plugins** (rescan). Add **My lil acid bassline** from the plugin list as an instrument.
+1. Copy `My lil acid bass.vst3` to `C:\Program Files\Common Files\VST3\` (needs admin).
+2. In FL Studio: **Options > Manage plugins**, then **Find installed plugins** (rescan). Add **My lil acid bass** from the plugin list as an instrument.
 3. Play it from the piano roll. To automate a knob, right-click the knob in the plugin panel and choose **Link to controller** / create an automation clip.
 
 ## Roadmap
