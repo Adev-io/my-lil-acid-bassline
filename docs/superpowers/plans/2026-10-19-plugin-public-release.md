@@ -153,7 +153,7 @@ cmd /c "\"C:\Users\Arikl\Desktop\_Projects\my-lil-acid-bassline\plugin\build.bat
   Select-String -Path 'plugin/build/MyLilAcidBassline_artefacts/Release/VST3/My lil acid bass.vst3/Contents/Resources/moduleinfo.json' -Pattern '"Version": "1\.0\.0' | Measure-Object | % Count
   Test-Path plugin/INSTALL.txt
   ```
-  Expected: `1`, `1`, `True`.
+  Expected: `1`, `2`, `True` (moduleinfo.json lists the version twice).
 - **Commit:** `git add plugin/INSTALL.txt plugin/CMakeLists.txt && git -c user.email=a_development@users.noreply.github.com -c user.name=A_Development commit -m "Plugin 1.0.0: version bump and the install sheet that ships in the release zip"`
 
 ---
@@ -507,7 +507,7 @@ Then in FL Studio: Options > Manage plugins > Find installed plugins; add My lil
   Select-String 'C:\Program Files\Common Files\VST3\My lil acid bass.vst3\Contents\Resources\moduleinfo.json' -Pattern '"Version": "1\.0\.0' | Measure-Object | % Count
   Test-Path C:\Users\Arikl\Desktop\screenshots\plugin-release-fl.png
   ```
-  Expected: `True`, `1`, `True`.
+  Expected: `True`, `2`, `True`.
 - **Commit:** none.
 
 ---
