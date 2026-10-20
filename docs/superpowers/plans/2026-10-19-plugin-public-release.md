@@ -19,7 +19,7 @@ Spec: `docs/superpowers/specs/2026-10-19-plugin-public-release-design.md`. Repo:
 **Files:**
 - Create: `.github/workflows/plugin.yml`
 
-- [ ] **Task 1: Create `.github/workflows/plugin.yml` with exactly this content**
+- [x] **Task 1: Create `.github/workflows/plugin.yml` with exactly this content**
 
 ```yaml
 name: plugin
@@ -115,7 +115,7 @@ Note: `on.push.paths` with a tag push: GitHub applies path filters to tag pushes
 - Create: `plugin/INSTALL.txt`
 - Modify: `plugin/CMakeLists.txt:4` (`project(MyLilAcidBassline VERSION 0.1.0)` → `1.0.0`)
 
-- [ ] **Task 2: Add `plugin/INSTALL.txt`, bump the CMake project version to 1.0.0, rebuild locally**
+- [x] **Task 2: Add `plugin/INSTALL.txt`, bump the CMake project version to 1.0.0, rebuild locally**
 
 `plugin/INSTALL.txt` content (exact):
 
@@ -165,7 +165,7 @@ cmd /c "\"C:\Users\Arikl\Desktop\_Projects\my-lil-acid-bassline\plugin\build.bat
 
 Facts verified in code 2026-10-19 (`plugin/Source/PluginProcessor.cpp` parameter list, `Sequencer.h`, `Editor.cpp`): in the plugin = voice (8 params), tweaks (HP, Key Follow, Min Decay, PW, LFO Rate, LFO>PW), filter + amp ADSR, drive (on, type, drive, HP, tone, volume, mix), delay (time, feedback, mix, tone, stereo, ping-pong), reverb (on, pre-delay, size, decay, hi damp, low cut, hi cut, width, dry, wet), sequencer (on, swing, gate length, 32 steps on the host clock), 128-slot pattern bank with factory patterns and Restore, MIDI drag and Save MIDI, web page as the window. Not in the plugin: delay Fat, tempo Sync.
 
-- [ ] **Task 3: Replace `plugin/README.md` with this content**
+- [x] **Task 3: Replace `plugin/README.md` with this content**
 
 ```markdown
 # My lil acid bass: VST3 and standalone
@@ -252,7 +252,7 @@ The plugin binary embeds the MIT web files (`index.html`, `acidbass.js`, `factor
 - Modify: `README.md` (title block, new Download section, "FL Studio plugin" section, License section)
 - Create: `docs/screenshots/plugin-fl.png`
 
-- [ ] **Task 4: Root README: plugin download section, screenshot, licence sentence**
+- [x] **Task 4: Root README: plugin download section, screenshot, licence sentence**
 
 Screenshot first. FL Studio open with My lil acid bass window visible (the plugin is installed from the earlier session). Capture the plugin window region to `C:\Users\Arikl\Desktop\screenshots\plugin-fl.png` (Win+Shift+S then save, or any capture tool with that explicit path), then:
 ```powershell
@@ -309,7 +309,7 @@ The plugin binary embeds the MIT web files (`index.html`, `acidbass.js`, `factor
 **Files:**
 - Create: `.github/ISSUE_TEMPLATE/bug.md`, `.github/ISSUE_TEMPLATE/feature.md`, `CONTRIBUTING.md`
 
-- [ ] **Task 5: Issue templates and CONTRIBUTING.md**
+- [x] **Task 5: Issue templates and CONTRIBUTING.md**
 
 `.github/ISSUE_TEMPLATE/bug.md`:
 ```markdown
@@ -371,7 +371,7 @@ labels: enhancement
 **Files:**
 - Create: `docs/listing.md`
 
-- [ ] **Task 6: Write `docs/listing.md` with the copy for KVR, Reddit, the FL forum and BPB**
+- [x] **Task 6: Write `docs/listing.md` with the copy for KVR, Reddit, the FL forum and BPB**
 
 ```markdown
 # Listing copy for My lil acid bass
@@ -431,7 +431,7 @@ Windows 10/11 64-bit, a VST3 host (FL Studio, Ableton Live, Reaper, Bitwig, Cuba
 
 **Files:** none edited.
 
-- [ ] **Task 7: Push the branch, open the PR, wait for the `plugin` workflow to pass, merge with a merge commit**
+- [x] **Task 7: Push the branch, open the PR, wait for the `plugin` workflow to pass, merge with a merge commit**
 
 ```powershell
 cd C:\Users\Arikl\Desktop\_Projects\my-lil-acid-bassline
@@ -463,7 +463,7 @@ git checkout main && git pull
 
 **Files:** none edited.
 
-- [ ] **Task 8: Tag `v1.0.0` on main, push the tag, watch the release job, confirm the zip is attached**
+- [x] **Task 8: Tag `v1.0.0` on main, push the tag, watch the release job, confirm the zip is attached**
 
 ```powershell
 cd C:\Users\Arikl\Desktop\_Projects\my-lil-acid-bassline
@@ -488,7 +488,7 @@ gh release view v1.0.0 --json assets -q '.assets[].name'
 
 **Files:** none in repo. Screenshot `C:\Users\Arikl\Desktop\screenshots\plugin-release-fl.png`.
 
-- [ ] **Task 9: Download the release zip, replace the installed VST3 with it, FL rescan, play a note, screenshot**
+- [x] **Task 9: Download the release zip, replace the installed VST3 with it, FL rescan, play a note, screenshot**
 
 ```powershell
 $d = "C:\Users\Arikl\AppData\Local\Temp\acidbass-release"; Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue; New-Item -ItemType Directory $d | Out-Null
