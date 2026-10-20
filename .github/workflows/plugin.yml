@@ -37,8 +37,18 @@ jobs:
           path: plugin/build/_deps
           key: deps-${{ hashFiles('plugin/CMakeLists.txt') }}
 
+      - name: WebView2 SDK (NuGet package, same version JUCE 9.0.4 asks for)
+        shell: pwsh
+        run: |
+          $dir = "plugin/build/_deps/nuget/Microsoft.Web.WebView2.1.0.3485.44"
+          if (-not (Test-Path "$dir/build/native/include/WebView2.h")) {
+            New-Item -ItemType Directory -Force $dir | Out-Null
+            Invoke-WebRequest https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.3485.44 -OutFile webview2.zip
+            Expand-Archive webview2.zip $dir -Force
+          }
+
       - name: Configure
-        run: cmake -S plugin -B plugin/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S plugin -B plugin/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJUCE_WEBVIEW2_PACKAGE_LOCATION=${{ github.workspace }}/plugin/build/_deps/nuget
 
       - name: Build
         run: cmake --build plugin/build
