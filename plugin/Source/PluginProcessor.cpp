@@ -8,6 +8,8 @@ AcidBassProcessor::AcidBassProcessor()
     : AudioProcessor (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "STATE", createLayout())
 {
+    apvts.state.setProperty ("pattern", acidseq::toJson (pattern), nullptr);   // a fresh state carries the (empty) pattern
+    setBankFile (juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory).getChildFile ("A_Development").getChildFile ("MyLilAcidBassline").getChildFile ("bank.json"));
     startTimerHz (4);   // the IR rebuilds at most 4 times a second, like the web page
 }
 
@@ -47,7 +49,96 @@ juce::AudioProcessorValueTreeState::ParameterLayout AcidBassProcessor::createLay
     l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "rvon", 1 }, "Reverb On", false));
     knob ("rvpre", "Reverb Pre-delay", 0.0f); knob ("rvsize", "Reverb Size", 0.5f); knob ("rvdec", "Reverb Decay", 0.5f); knob ("rvdamp", "Reverb Hi Damp", 0.5f);
     knob ("rvlow", "Reverb Low Cut", 0.0f); knob ("rvhigh", "Reverb Hi Cut", 1.0f); knob ("rvwid", "Reverb Width", 1.0f); knob ("rvdry", "Reverb Dry", 1.0f); knob ("rvwet", "Reverb Wet", 0.0f);
+    l.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { "seqon", 1 }, "Sequencer On", false));
+    knob ("swing", "Swing", 0.0f); knob ("gate", "Gate Length", 0.5f);
     return l;
+}
+
+namespace
+{
+// {"cur":n,"overrides":{"5":"<json>"}} text -> the overrides, and cur (or -1); garbage gives nothing.
+int parseBank (const juce::String& text, std::map<int, juce::String>& out)
+{
+    out.clear();
+    const auto v = juce::JSON::parse (text);
+    if (auto* o = v["overrides"].getDynamicObject())
+        for (const auto& kv : o->getProperties())
+        {
+            const auto key = kv.name.toString();
+            if (kv.value.isString() && key.isNotEmpty() && key.length() <= 3 && key.containsOnly ("0123456789"))
+                if (const int slot = key.getIntValue(); slot < 128) out[slot] = acidseq::toJson (acidseq::fromJson (kv.value.toString()));
+        }
+    const auto c = v["cur"];
+    return c.isInt() || c.isInt64() || c.isDouble() ? juce::jlimit (0, 127, (int) c) : -1;
+}
+}
+
+juce::String AcidBassProcessor::bankJsonLocked() const
+{
+    auto* o = new juce::DynamicObject();
+    auto* ov = new juce::DynamicObject();
+    for (const auto& [slot, json] : overrides) ov->setProperty (juce::Identifier (juce::String (slot)), json);
+    o->setProperty ("cur", cur);
+    o->setProperty ("overrides", juce::var (ov));
+    return juce::JSON::toString (juce::var (o), true);
+}
+
+juce::String AcidBassProcessor::getBankJson() const { const juce::SpinLock::ScopedLockType l (patternLock); return bankJsonLocked(); }
+int AcidBassProcessor::getCurSlot() const { const juce::SpinLock::ScopedLockType l (patternLock); return cur; }
+
+void AcidBassProcessor::saveBankFile (const std::map<int, juce::String>& ov) const
+{
+    if (bankFile == juce::File()) return;
+    auto* o = new juce::DynamicObject();
+    auto* m = new juce::DynamicObject();
+    for (const auto& [slot, json] : ov) m->setProperty (juce::Identifier (juce::String (slot)), json);
+    o->setProperty ("overrides", juce::var (m));
+    bankFile.getParentDirectory().createDirectory();
+    bankFile.replaceWithText (juce::JSON::toString (juce::var (o), true));   // a failed write is ignored
+}
+
+void AcidBassProcessor::setPatternSlot (int slot, const juce::String& json, bool base)
+{
+    const auto p = acidseq::fromJson (json);
+    juce::String bank; const auto pj = acidseq::toJson (p);
+    bool changed = false; std::map<int, juce::String> snapshot;
+    {
+        const juce::SpinLock::ScopedLockType l (patternLock);
+        cur = juce::jlimit (0, 127, slot); pattern = p;
+        if (base) changed = overrides.erase (cur) > 0;
+        else { auto& e = overrides[cur]; changed = e != pj; e = pj; }
+        bank = bankJsonLocked();
+        if (changed) snapshot = overrides;
+    }
+    apvts.state.setProperty ("pattern", pj, nullptr);
+    apvts.state.setProperty ("bank", bank, nullptr);
+    bankRevNow.fetch_add (1);
+    if (changed) saveBankFile (snapshot);
+}
+
+void AcidBassProcessor::setBankFile (const juce::File& f)
+{
+    bankFile = f;
+    std::map<int, juce::String> loaded;
+    if (f.existsAsFile()) parseBank (f.loadFileAsString(), loaded);
+    juce::String bank, pj;
+    {
+        const juce::SpinLock::ScopedLockType l (patternLock);
+        overrides = loaded;
+        if (const auto it = overrides.find (cur); it != overrides.end()) pattern = acidseq::fromJson (it->second);
+        bank = bankJsonLocked(); pj = acidseq::toJson (pattern);
+    }
+    apvts.state.setProperty ("pattern", pj, nullptr);
+    apvts.state.setProperty ("bank", bank, nullptr);
+    bankRevNow.fetch_add (1);
+}
+
+void AcidBassProcessor::setPatternJson (const juce::String& json) { setPatternSlot (getCurSlot(), json, false); }
+
+juce::String AcidBassProcessor::getPatternJson() const
+{
+    const juce::SpinLock::ScopedLockType l (patternLock);
+    return acidseq::toJson (pattern);
 }
 
 AcidParams AcidBassProcessor::currentParams() const
@@ -69,6 +160,7 @@ void AcidBassProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     drive.prepare (sampleRate);
     delay.prepare (sampleRate);
     reverb.prepare (sampleRate, samplesPerBlock); irKey = -1; refreshReverbIR();
+    seqOut.reserve (256); merged.ensureSize (4096);
 }
 
 void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -79,8 +171,27 @@ void AcidBassProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const auto p = currentParams();
     float* out = buffer.getWritePointer (0);
 
+    bool playing = false; double bpm = 120.0, ppq = 0.0;
+    if (auto* ph = getPlayHead())
+        if (auto hp = ph->getPosition())
+        {
+            playing = hp->getIsPlaying() && hp->getPpqPosition().hasValue();
+            bpm = hp->getBpm().orFallback (120.0); ppq = hp->getPpqPosition().orFallback (0.0);
+        }
+    { const juce::SpinLock::ScopedTryLockType l (patternLock); if (l.isLocked()) audioPattern = pattern; }
+    acidseq::Settings ss;
+    ss.on = apvts.getRawParameterValue ("seqon")->load() > 0.5f;
+    ss.swing = apvts.getRawParameterValue ("swing")->load();
+    ss.gateFrac = (float) acidmaps::gateFrac (apvts.getRawParameterValue ("gate")->load());
+    seqEngine.process (audioPattern, ss, playing, ppq, bpm, n, getSampleRate(), seqOut);
+    seqStepNow.store (seqEngine.currentStep());
+    // ponytail: merged and seqOut allocate only on the first big block (prepareToPlay reserves room; they grow only if a host sends more events than that)
+    merged.clear(); merged.addEvents (midi, 0, n, 0);
+    for (const auto& e : seqOut)
+        merged.addEvent (e.on ? juce::MidiMessage::noteOn (1, e.note, e.velocity) : juce::MidiMessage::noteOff (1, e.note), e.sample);
+
     int pos = 0;
-    for (const auto meta : midi)
+    for (const auto meta : merged)
     {
         const int at = juce::jlimit (pos, n, meta.samplePosition);
         if (at > pos) voice.render (out + pos, at - pos, p);
@@ -132,7 +243,22 @@ void AcidBassProcessor::getStateInformation (juce::MemoryBlock& dest)
 void AcidBassProcessor::setStateInformation (const void* data, int size)
 {
     if (auto xml = getXmlFromBinary (data, size))
-        if (xml->hasTagName (apvts.state.getType())) apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        if (xml->hasTagName (apvts.state.getType())) {
+            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+            std::map<int, juce::String> project;
+            const int c = parseBank (apvts.state.getProperty ("bank").toString(), project);   // garbage gives nothing: the file's overrides stay
+            const auto p = acidseq::fromJson (apvts.state.getProperty ("pattern", acidseq::toJson (acidseq::Pattern{})).toString());
+            juce::String bank; const auto pj = acidseq::toJson (p);
+            {
+                const juce::SpinLock::ScopedLockType l (patternLock);
+                for (const auto& [slot, json] : project) overrides[slot] = json;   // the project wins per slot over the file
+                cur = juce::jmax (0, c); pattern = p;
+                bank = bankJsonLocked();
+            }
+            apvts.state.setProperty ("pattern", pj, nullptr);
+            apvts.state.setProperty ("bank", bank, nullptr);
+            bankRevNow.fetch_add (1);   // restoring does not touch the user file
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter() { return new AcidBassProcessor(); }

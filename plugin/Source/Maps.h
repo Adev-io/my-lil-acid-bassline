@@ -32,6 +32,7 @@ inline double delayFb (double k)    { return 0.9 * k; }
 inline double atkSec (double k)    { return 0.002 * std::pow (750.0, k); }
 inline double envDecSec (double k) { return 0.03 * std::pow (83.0, k); }
 inline double relSec (double k)    { return 0.005 * std::pow (400.0, k); }
+inline double gateFrac (double k)  { return 0.1 + 0.9 * k; }
 
 enum class DriveType { Soft = 0, Tube = 1, Wavefold = 2 };
 constexpr double driveRange = 1.5;

@@ -11,15 +11,29 @@
     cutoff: { id: 'cutoff', to: (v) => T.cutoffHz(v), from: (hz) => Math.log2(Math.max(hz, 60) / 60) / 6.5 },
     fdec: { id: 'decay', to: (v) => T.decSec(v), from: (s) => Math.log(Math.max(s, 0.03) / 0.03) / Math.log(83) },
   };
-  // Web knobs the plugin has no parameter for yet (envelope, gate, tempo); the page hides them inside the plugin.
-  const NONE = ['tempo', 'gate'];
+  // Web knobs the plugin has no parameter for (tempo comes from the host); the page hides them inside the plugin.
+  const NONE = ['tempo'];
   const idOf = (key) => (REAL[key] ? REAL[key].id : key);
   const toPlugin = (key, v) => (REAL[key] ? REAL[key].to(v) : v);
   const fromPlugin = (key, x) => clamp01(REAL[key] ? REAL[key].from(x) : x);
-  // The page's natural size in the plugin (sequencer parts hidden). A smaller window scales the page down to fit, never up.
-  const NAT_W = 805, NAT_H = 748;
+  // The page's natural size in the plugin (16 steps showing; 32 steps need about 1050 high and scroll). A smaller window scales the page down to fit, never up.
+  const NAT_W = 805, NAT_H = 990;
   const fitZoom = (w, h) => Math.min(1, Math.max(0.3, Math.min(w / NAT_W, h / NAT_H)));
-  window.PluginMap = { NONE, idOf, toPlugin, fromPlugin, fitZoom };
+  // Pattern bank: slots 0..63 are the factory lines, 64..127 start empty. Shown 1-based ("07 Funk 07", "70 User").
+  const BANK = 128, FACTORY = 64;
+  const slotLabel = (i, list) => String(i + 1).padStart(2, '0') + ' ' + (i < FACTORY && list[i] ? list[i].name : 'User');
+  const isBase = (pat, baseP) => JSON.stringify(pat) === JSON.stringify(baseP);
+  // Bytes -> base64 text (the page's btoa needs a string; this takes a Uint8Array and works without a browser).
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const b64 = (u8) => {
+    let o = '';
+    for (let i = 0; i < u8.length; i += 3) {
+      const n = (u8[i] << 16) | ((u8[i + 1] || 0) << 8) | (u8[i + 2] || 0);
+      o += B64[n >> 18] + B64[(n >> 12) & 63] + (i + 1 < u8.length ? B64[(n >> 6) & 63] : '=') + (i + 2 < u8.length ? B64[n & 63] : '=');
+    }
+    return o;
+  };
+  window.PluginMap = { NONE, idOf, toPlugin, fromPlugin, fitZoom, slotLabel, isBase, b64, BANK, FACTORY };
 
   if (!window.__JUCE__) return;   // not inside the plugin
 
@@ -27,12 +41,15 @@
   document.body.classList.add('plug');
   const st = document.createElement('style');
   st.textContent = '.plug .seq,.plug #midiBtn,.plug #midiIn,.plug #midiMsg,.plug #autoBtn,.plug #dFat,.plug #dSync,.plug .envc,'
-    + '.plug .sect:has(#keys),.plug #steps,.plug #steps+div,.plug .sect:has(#gBank),.plug .sect:has(#run),.plug .sect:has(#song),'
-    + '.plug div:has(>#io),.plug .grp:has(#swing),.plug .grp:has(#sync),.plug .grp:has(#dMs),.plug .eg:has(#envG),.plug .kw.nop{display:none!important}';
+    + '.plug #gBank,.plug #gGroup,.plug #gSlot,.plug #run,.plug #mode,.plug .sect:has(#song)>.t,.plug #song,.plug #sAdd,.plug #sClr,'
+    + '.plug div:has(>#io),.plug .grp:has(#sync),.plug .grp:has(#dMs),.plug .kw.nop{display:none!important}';
   document.head.append(st);
   const fit = () => { document.body.style.zoom = fitZoom(innerWidth, innerHeight); };
   fit(); addEventListener('resize', fit);
   window.ensureAudio = () => {};   // the plugin makes the sound; the page never opens an audio context
+  window.play = () => {};   // on-screen keys write steps; without an audio context the voice code would throw
+  // A key press in the page reads ctx.currentTime before it writes the step, so in the plugin it only writes the step.
+  window.noteOn = (n) => { if (rec) { cursor = T.writeNote(S.patterns[S.cur], cursor, n, mods); paintSteps(); save(); } };
   // The typing keys play notes in the web page; here they would throw (no audio context) and FL owns the keyboard anyway.
   for (const type of ['keydown', 'keyup'])
     addEventListener(type, (e) => { if (!(e.target.classList && e.target.classList.contains('knob'))) e.stopImmediatePropagation(); }, true);
@@ -46,9 +63,34 @@
     wave: [() => (S.wave === 'square' ? 1 : 0), (x) => setWave(x > 0.5 ? 'square' : 'saw')],
     dron: [() => (S.drive.on ? 1 : 0), (x) => { S.drive.on = x > 0.5; paintDrive(); }],
     drtype: [() => Math.max(0, DRIVE.indexOf(S.drive.type)), (x) => { S.drive.type = DRIVE[Math.round(x)] || 'soft'; paintDrive(); }],
+    swing: [() => S.swing, (x) => { S.swing = x; $('swing').value = Math.round(x * 100); }],
+    seqon: [() => (seqOn ? 1 : 0), (x) => { seqOn = x > 0.5; paintSeq(); }],
     rvon: [() => (S.reverb.on ? 1 : 0), (x) => { S.reverb.on = x > 0.5; paintReverb(); }],
     dpp: [() => (S.delay.pp ? 1 : 0), (x) => { S.delay.pp = x > 0.5; paintDelay(); }],
   };
+  // Seq switch: the first .sect holds the wave and swing controls.
+  let seqOn = false;
+  const seqBtn = document.createElement('button');
+  seqBtn.className = 'btn'; seqBtn.id = 'seqOn'; seqBtn.textContent = 'Seq'; seqBtn.setAttribute('aria-pressed', 'false');
+  seqBtn.title = 'play the step pattern in time with the host tempo and position';
+  document.querySelector('.sect').append(seqBtn);
+  const paintSeq = () => { seqBtn.classList.toggle('on', seqOn); seqBtn.setAttribute('aria-pressed', String(seqOn)); };
+  seqBtn.onclick = () => { seqOn = !seqOn; paintSeq(); };
+  // Slot picker (replaces the bank/group/no. buttons): prev, next, a list of all 128, and Restore.
+  const fl = (window.TB303Factory && window.TB303Factory.list) || [];
+  const base = Array.from({ length: BANK }, (_, i) => (i < FACTORY && fl[i] ? T.parsePattern(fl[i].steps) : T.emptyPattern()));
+  while (S.patterns.length < BANK) S.patterns.push(T.emptyPattern());
+  T.slotName = (i) => slotLabel(i, fl);
+  const pick = document.createElement('div'); pick.className = 'grp'; pick.id = 'gPick';
+  const pBtn = (id, txt, title) => { const b = document.createElement('button'); b.className = 'btn'; b.id = id; b.textContent = txt; b.title = title; return b; };
+  const pPrev = pBtn('pPrev', '<', 'previous slot'), pNext = pBtn('pNext', '>', 'next slot');
+  const pRest = pBtn('pRest', 'Restore', 'put this slot back to its factory pattern, or clear it');
+  const pSel = document.createElement('select'); pSel.id = 'pSel'; pSel.setAttribute('aria-label', 'pattern slot');
+  for (let i = 0; i < BANK; i++) { const o = document.createElement('option'); o.value = i; o.textContent = slotLabel(i, fl); pSel.append(o); }
+  const pDrag = pBtn('pDrag', 'Drag MIDI', 'drag this pattern as a .mid file into the host (piano roll, channel rack, playlist)');
+  const pSave = pBtn('pSave', 'Save MIDI', 'save this pattern as a .mid file in Documents\A_Development\MyLilAcidBassline\midi');
+  pick.append(pPrev, pSel, pNext, pRest, pDrag, pSave);
+  $('gSlot').after(pick);
   const read = (id) => (SW[id] ? SW[id][0]() : toPlugin(byId[id], S.knobs[byId[id]]));
   const ids = [...Object.keys(byId), ...Object.keys(SW)];
 
@@ -76,9 +118,40 @@
     const release = () => { poll(); for (const id of active) backend.emitEvent('gesture', { id, on: false }); active.clear(); };
     document.addEventListener('pointerup', release, true); document.addEventListener('pointercancel', release, true);
 
+    // The pattern lives in the plugin (saved with the project): ship edits out, take the plugin's copy in.
+    const patJson = () => JSON.stringify(S.patterns[S.cur]);
+    let lastPat = patJson();
+    const sendPat = () => { const j = patJson(); lastPat = j; backend.emitEvent('pattern', { json: j, slot: S.cur, base: isBase(S.patterns[S.cur], base[S.cur]) }); };
+    const pollPattern = () => { if (patJson() !== lastPat) sendPat(); };
+    const showSlot = () => { pSel.value = S.cur; };
+    const goSlot = (i) => { S.cur = (i + BANK) % BANK; cursor = 0; paintSteps(); sendPat(); };
+    pSel.onchange = () => goSlot(+pSel.value);
+    pPrev.onclick = () => goSlot(S.cur - 1); pNext.onclick = () => goSlot(S.cur + 1);
+    pRest.onclick = () => { S.patterns[S.cur] = JSON.parse(JSON.stringify(base[S.cur])); cursor = 0; paintSteps(); sendPat(); };
+    // Sequence to MIDI: the current pattern as a .mid file, dragged out on pointerdown (the mouse is still down) or saved.
+    const midiEvent = (type) => backend.emitEvent(type, { name: slotLabel(S.cur, fl), b64: b64(T.patternsToMidi([S.patterns[S.cur]], T.bpmOf(S.knobs.tempo), slotLabel(S.cur, fl), T.gateFrac(S.knobs.gate))) });
+    pDrag.addEventListener('pointerdown', () => midiEvent('dragmidi'));
+    pSave.onclick = () => midiEvent('savemidi');
+    backend.addEventListener('msg', (m) => { $('msg').textContent = m.text; });
+    const paint1 = window.paintSteps;
+    window.paintSteps = () => { paint1(); showSlot(); };
+    // The plugin's whole bank (on ready and after a project restore): factory lines with the overrides on top.
+    backend.addEventListener('bank', (m) => {
+      for (let i = 0; i < BANK; i++) S.patterns[i] = JSON.parse(JSON.stringify(base[i]));
+      for (const [k, j] of Object.entries(m.overrides || {})) { const i = +k; if (i >= 0 && i < BANK) S.patterns[i] = T.cleanPattern(JSON.parse(j)); }
+      S.cur = Math.min(BANK - 1, Math.max(0, m.cur | 0));
+      cursor = Math.min(cursor, S.patterns[S.cur].len - 1);
+      lastPat = patJson();   // already the plugin's, so do not echo it back
+      paintSteps();
+    });
+    // The playing step: the page's own LED logic needs run.on and an audio clock, so draw it after every paint.
+    let hostStep = -1;
+    const paint0 = paintSteps;
+    window.paintSteps = () => { paint0(); cells.forEach((x, i) => x.led.classList.toggle('on', i === hostStep)); };
+    backend.addEventListener('step', (m) => { hostStep = m.i; playing = m.i; paintSteps(); });
     S.delay.fat = false; S.delay.sync = false; paintDelay();   // phase 2 in the plugin
     for (const id of ids) last[id] = read(id);   // nothing is sent until the host has told the page its values
-    setInterval(poll, 30);
+    setInterval(() => { poll(); pollPattern(); }, 30);
     for (const b of ['envBtn', 'twBtn', 'drBtn', 'rvBtn', 'fxBtn']) $(b).click();   // show the sound panels
     backend.emitEvent('ready', {});
   });

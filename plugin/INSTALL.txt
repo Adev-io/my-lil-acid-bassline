@@ -1,0 +1,16 @@
+My lil acid bass - install (Windows 10/11, 64-bit)
+
+VST3 (FL Studio, Ableton, Reaper, Bitwig, ...):
+1. Copy the whole folder "My lil acid bass.vst3" to C:\Program Files\Common Files\VST3\  (needs admin).
+2. FL Studio: Options > Manage plugins > Find installed plugins. Add "My lil acid bass" as an instrument.
+   Other hosts: rescan plugins.
+3. Play it from the piano roll. Knobs are host parameters: right-click one to automate it.
+
+Standalone: run "My lil acid bass.exe" from anywhere. It needs a MIDI keyboard or the on-screen keys.
+
+The window uses WebView2, which ships with Windows 11. Windows 10 without it: install the Evergreen runtime
+from Microsoft (search "WebView2 runtime").
+
+The files are not code-signed. If SmartScreen warns, choose More info > Run anyway.
+
+Source and licence (AGPL-3.0-or-later): https://github.com/Adev-io/my-lil-acid-bassline

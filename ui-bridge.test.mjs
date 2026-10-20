@@ -52,12 +52,47 @@ test('every web knob either has a real plugin parameter or is listed as NONE, an
 
 test('the switches the bridge carries exist in the plugin', () => {
   const cpp = read('./plugin/Source/PluginProcessor.cpp');
-  for (const id of ['wave', 'dron', 'drtype', 'rvon', 'dpp']) assert.ok(new RegExp(`["']${id}["']`).test(cpp), id);
+  for (const id of ['wave', 'dron', 'drtype', 'rvon', 'dpp', 'swing', 'seqon']) assert.ok(new RegExp(`["']${id}["']`).test(cpp), id);
 });
 
 test('fitZoom scales the page down to the window and never up', () => {
-  assert.equal(M.fitZoom(1000, 900), 1);
+  assert.equal(M.fitZoom(1000, 1000), 1);
   assert.equal(M.fitZoom(402.5, 900), 0.5);
-  assert.equal(M.fitZoom(1000, 374), 0.5);
+  assert.equal(M.fitZoom(1000, 495), 0.5);
   assert.equal(M.fitZoom(10, 10), 0.3);
+});
+
+test('only tempo is left without a plugin parameter (swing and seqon are switches, gate is real)', () => {
+  assert.equal(JSON.stringify(M.NONE), '["tempo"]');
+});
+
+test('slot labels are 1-based; factory slots carry the name, the rest are User', () => {
+  const list = [{ name: 'Funk 01' }, { name: 'Funk 02' }];
+  assert.equal(M.slotLabel(0, list), '01 Funk 01');
+  assert.equal(M.slotLabel(1, list), '02 Funk 02');
+  assert.equal(M.slotLabel(69, list), '70 User');
+  assert.equal(M.slotLabel(127, list), '128 User');
+  assert.equal(M.BANK, 128); assert.equal(M.FACTORY, 64);
+});
+
+test('isBase compares pattern content, not identity', () => {
+  const a = sb.TB303.emptyPattern(), b = sb.TB303.emptyPattern();
+  assert.ok(M.isBase(a, b));
+  b.steps[0].gate = 1;
+  assert.ok(!M.isBase(a, b));
+});
+
+test('b64 matches the standard base64 for every length remainder', () => {
+  for (const n of [0, 1, 2, 3, 4, 5, 100]) {
+    const u = Uint8Array.from({ length: n }, (_, i) => (i * 37 + 250) & 255);
+    assert.equal(M.b64(u), Buffer.from(u).toString('base64'), 'len ' + n);
+  }
+});
+
+test('a pattern midi survives the base64 hop and is a standard MIDI file', () => {
+  const T = sb.TB303;
+  const mid = T.patternsToMidi([T.parsePattern('C* - E')], 120, '01 Funk 01', T.gateFrac(0.5));
+  const back = Buffer.from(Buffer.from(M.b64(mid), 'base64'));
+  assert.equal(back.subarray(0, 4).toString('latin1'), 'MThd');
+  assert.deepEqual([...back], [...mid]);
 });

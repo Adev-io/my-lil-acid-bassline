@@ -1,34 +1,39 @@
-# My lil acid bassline: VST3 for FL Studio (in progress)
+# My lil acid bass: VST3 and standalone
 
 **by A_Development**
 
-The web version's sound as a real plugin: a monophonic acid bass instrument that plays from FL Studio's piano roll, with every knob a host parameter you can automate.
+The web version's sound as a real plugin: a monophonic acid bass instrument with its own 32-step sequencer, for FL Studio and any other VST3 host, plus a standalone app. Every knob is a host parameter you can automate. The window is the web page's panel.
 
-**Status: phase 2.** The voice, the tweaks, the drive, the delay, the reverb and the filter and amp ADSR work, and the window is the web page's panel (WebView2). Not yet in the plugin: gate length, delay Fat and tempo Sync, presets and the 32-step sequencer. They come from the web version in later phases (the roadmap below).
+## Download
 
-## What works now
+Windows 10/11, 64-bit: **[latest release](https://github.com/Adev-io/my-lil-acid-bassline/releases/latest)**. The zip holds the VST3 bundle, the standalone exe, the licences and an install sheet.
 
-| | |
-|---|---|
-| Voice | PolyBLEP saw or square into a 24 dB resonant lowpass, soft-clipped output |
-| Parameters | Tuning, Cutoff, Resonance, Env Mod, Decay, Accent, Volume, Waveform |
-| MIDI | Notes play the voice. Velocity 110 or more is an accent. A note struck while another is held **slides** to the new pitch without retriggering, so overlapping notes in the piano roll give the 303 slide. |
-| Host | Parameters are visible to FL for automation; state saves with the project |
+## Install in FL Studio
+
+1. Copy the whole folder `My lil acid bass.vst3` to `C:\Program Files\Common Files\VST3\` (needs admin).
+2. **Options > Manage plugins**, then **Find installed plugins**. Add **My lil acid bass** as an instrument.
+3. Play it from the piano roll, or turn the sequencer on and press play in FL. To automate a knob, right-click it in the plugin panel.
+
+The files are not code-signed: if SmartScreen warns, choose **More info > Run anyway**. The window uses WebView2 (ships with Windows 11; Windows 10 may need the Evergreen runtime from Microsoft).
 
 ## What it has
 
-- **Voice:** the original eight controls (Tuning, Cutoff, Resonance, Env Mod, Decay, Accent, Volume, Waveform).
-- **Tweaks:** HP, Key Follow, Min Decay, Pulse Width, LFO Rate, LFO to PW.
-- **Drive:** on, type (soft, tube, wavefold), drive, HP, tone, volume, mix. Runs at 4x oversampling.
-- **Delay:** time, feedback, mix, tone, stereo, ping-pong.
-- **Reverb:** on, pre-delay, size, decay, hi damp, low cut, hi cut, width, dry, wet.
-- **Envelopes:** filter attack, decay (the Decay knob), sustain and release; amp attack, decay, sustain and release.
+| | |
+|---|---|
+| Voice | PolyBLEP saw or square into a 24 dB resonant lowpass, soft-clipped output. Tuning, Cutoff, Resonance, Env Mod, Decay, Accent, Volume, Waveform |
+| Tweaks | HP, Key Follow, Min Decay, Pulse Width, LFO Rate, LFO to PW |
+| Envelopes | Filter attack, decay (the Decay knob), sustain, release; amp attack, decay, sustain, release |
+| Drive | On, type (soft, tube, wavefold), drive, HP, tone, volume, mix. 4x oversampled |
+| Delay | Time, feedback, mix, tone, stereo, ping-pong |
+| Reverb | On, pre-delay, size, decay, hi damp, low cut, hi cut, width, dry, wet |
+| Sequencer | 32 steps on the host clock: note, octave, accent, slide, rest, tie. Swing and gate length. Starts and stops with the host transport |
+| Patterns | 128 slots. The web version's factory patterns fill them; your edits are kept per slot, with Restore to get the factory one back |
+| MIDI | Notes play the voice; velocity 110 or more is an accent; overlapping notes slide. Drag the current pattern out as MIDI, or Save MIDI to `Documents\A_Development\MyLilAcidBassline\midi` |
+| Host | All knobs 0..1 and automatable, named like the web app's. State saves with the project. Pattern edits also save to `Documents\A_Development\MyLilAcidBassline\bank.json` |
 
-All knobs are 0..1 and automatable, and they are named like the web app's knobs. The window is the web page's panel in a WebView2 (the Evergreen runtime ships with Windows 11; Windows 10 may need it from Microsoft). The step grid, keyboard, tempo and gate length are hidden there. A build without WebView2 falls back to the host's generic knob list.
+Not in the plugin: the delay's Fat mode and tempo Sync (the web version has them).
 
-**Not in the plugin yet:** gate length, delay Fat and tempo Sync, presets, and the sequencer.
-
-## Build
+## Build from source
 
 Needs CMake, Ninja, and Visual Studio (or the free Build Tools) with the "Desktop development with C++" workload.
 
@@ -36,21 +41,17 @@ Needs CMake, Ninja, and Visual Studio (or the free Build Tools) with the "Deskto
 plugin\build.bat
 ```
 
-It fetches JUCE 9.0.4, builds the VST3 and a standalone app, and runs a headless smoke test that plays MIDI through the real processor and checks the audio (pitch, release, cutoff, envelope, accent, slide, saved state). The plugin lands in `plugin\build\MyLilAcidBassline_artefacts\Release\VST3\My lil acid bassline.vst3`.
+It fetches JUCE 9.0.4, builds the VST3 and the standalone, and runs a headless smoke test that plays MIDI through the real processor and checks the audio (pitch, release, cutoff, envelope, accent, slide, saved state). Output: `plugin\build\MyLilAcidBassline_artefacts\Release\VST3\My lil acid bass.vst3` and `...\Standalone\My lil acid bass.exe`.
 
-## Install in FL Studio
-
-1. Copy `My lil acid bassline.vst3` to `C:\Program Files\Common Files\VST3\` (needs admin).
-2. In FL Studio: **Options > Manage plugins**, then **Find installed plugins** (rescan). Add **My lil acid bassline** from the plugin list as an instrument.
-3. Play it from the piano roll. To automate a knob, right-click the knob in the plugin panel and choose **Link to controller** / create an automation clip.
+CI (`.github/workflows/plugin.yml`) runs the same steps on every push to `main`; a `vX.Y.Z` tag that matches the version in `CMakeLists.txt` also publishes the release zip.
 
 ## Roadmap
 
-1. **Voice and parameters** (done): sound, MIDI, slide, accent, state.
-2. **Match the web version:** filter and amp ADSR (done), gate length, the fat / tempo-synced delay (reading the host tempo).
-3. **Sequencer:** port the 32-step sequencer so it runs on the host clock; keep the `.txt` / `.mid` export.
-4. **Panel** (done): the web page's look, as the plugin window.
-5. **Release:** installer, GitHub Release, and (optional) a code-signing certificate so Windows does not warn on install.
+1. Voice, parameters, MIDI, slide, accent, state: done.
+2. Envelopes, gate length, sequencer, pattern bank, web panel window: done.
+3. Windows release on GitHub: done.
+4. Delay Fat and tempo Sync.
+5. macOS (AU + VST3, notarised) and Linux builds; Windows code signing.
 
 ## Known differences
 
@@ -60,4 +61,4 @@ It fetches JUCE 9.0.4, builds the VST3 and a standalone app, and runs a headless
 
 This folder is **AGPL-3.0-or-later** (see [LICENSE](LICENSE)), because it links the [JUCE](https://juce.com) framework under JUCE's open-source AGPLv3 option. In practice: you can use, change and share it freely, but anyone you give the plugin to must be able to get its source under the same license. Selling it as closed source would need a commercial JUCE licence instead.
 
-The rest of this repository (the web plugins) stays MIT.
+The plugin binary embeds the MIT web files (`index.html`, `acidbass.js`, `factory.js`, `ui-bridge.js`) as its window. MIT code inside an AGPL binary is permitted; the combined work is AGPL-3.0-or-later. The rest of this repository stays MIT.

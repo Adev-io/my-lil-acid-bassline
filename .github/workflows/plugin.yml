@@ -1,0 +1,82 @@
+name: plugin
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'plugin/**'
+      - 'index.html'
+      - 'acidbass.js'
+      - 'factory.js'
+      - 'ui-bridge.js'
+      - '.github/workflows/plugin.yml'
+  pull_request:
+    paths:
+      - 'plugin/**'
+      - 'index.html'
+      - 'acidbass.js'
+      - 'factory.js'
+      - 'ui-bridge.js'
+      - '.github/workflows/plugin.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache JUCE and WebView2 downloads
+        uses: actions/cache@v4
+        with:
+          path: plugin/build/_deps
+          key: deps-${{ hashFiles('plugin/CMakeLists.txt') }}
+
+      - name: WebView2 SDK (NuGet package, same version JUCE 9.0.4 asks for)
+        shell: pwsh
+        run: |
+          $dir = "plugin/build/_deps/nuget/Microsoft.Web.WebView2.1.0.3485.44"
+          if (-not (Test-Path "$dir/build/native/include/WebView2.h")) {
+            New-Item -ItemType Directory -Force $dir | Out-Null
+            Invoke-WebRequest https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.3485.44 -OutFile webview2.zip
+            Expand-Archive webview2.zip $dir -Force
+          }
+
+      - name: Configure
+        run: cmake -S plugin -B plugin/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJUCE_WEBVIEW2_PACKAGE_LOCATION=${{ github.workspace }}/plugin/build/_deps/nuget
+
+      - name: Build
+        run: cmake --build plugin/build
+
+      - name: Smoke test
+        run: ctest --test-dir plugin/build --output-on-failure
+
+      - name: Tag matches CMake version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: grep -q "VERSION ${GITHUB_REF_NAME#v})" plugin/CMakeLists.txt
+
+      - name: Package
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $rel = "plugin/build/MyLilAcidBassline_artefacts/Release"
+          New-Item -ItemType Directory -Force pkg | Out-Null
+          Copy-Item -Recurse "$rel/VST3/My lil acid bass.vst3" pkg/
+          Copy-Item "$rel/Standalone/My lil acid bass.exe" pkg/
+          Copy-Item plugin/LICENSE pkg/LICENSE-plugin.txt
+          Copy-Item LICENSE pkg/LICENSE-web.txt
+          Copy-Item plugin/INSTALL.txt pkg/INSTALL.txt
+          Compress-Archive -Path pkg/* -DestinationPath "My-lil-acid-bass-${env:GITHUB_REF_NAME}-windows-x64.zip"
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: My-lil-acid-bass-*.zip
+          generate_release_notes: true

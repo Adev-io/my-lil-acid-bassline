@@ -1,7 +1,7 @@
-# My lil acid bassline: VST3 instrument (and a standalone app) built on JUCE.
+# My lil acid bass: VST3 instrument (and a standalone app) built on JUCE.
 # Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see LICENSE)
 cmake_minimum_required(VERSION 3.22)
-project(MyLilAcidBassline VERSION 0.1.0)
+project(MyLilAcidBassline VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -21,13 +21,13 @@ juce_add_plugin(MyLilAcidBassline
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     NEEDS_WEBVIEW2 TRUE
-    PRODUCT_NAME "My lil acid bassline"
+    PRODUCT_NAME "My lil acid bass"
     VST3_CATEGORIES Instrument Synth
     COPY_PLUGIN_AFTER_BUILD FALSE)
 
-# The window is the web page itself: the same index.html, acidbass.js and ui-bridge.js the web version ships.
+# The window is the web page itself: the same index.html, acidbass.js, factory.js and ui-bridge.js the web version ships.
 juce_add_binary_data(AcidUi HEADER_NAME "AcidUiData.h" NAMESPACE AcidUi SOURCES
-    ../index.html ../acidbass.js ../ui-bridge.js ui/juce-frontend.js)
+    ../index.html ../acidbass.js ../factory.js ../ui-bridge.js ui/juce-frontend.js)
 
 target_sources(MyLilAcidBassline PRIVATE Source/PluginProcessor.cpp Source/PluginProcessor.h Source/AcidVoice.h Source/Maps.h Source/DriveStage.h Source/DelayStage.h Source/ReverbStage.h
     Source/ParamBridge.h Source/Editor.h Source/Editor.cpp)

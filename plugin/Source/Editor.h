@@ -16,8 +16,13 @@ public:
 private:
     std::optional<juce::WebBrowserComponent::Resource> resource (const juce::String& url);
     void pushChanges (bool all);
+    void dragMidi (const juce::var&);
+    void saveMidi (const juce::var&);
     void timerCallback() override { pushChanges (false); }
 
+    AcidBassProcessor& proc;
+    int lastBankRev = -1;
+    int lastStep = -2;
     ParamBridge bridge;
     juce::WebBrowserComponent web;
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (AcidEditor)
