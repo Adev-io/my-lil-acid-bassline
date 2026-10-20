@@ -2,7 +2,19 @@
 
 **by A_Development**
 
-A 303-style acid bass synth and 32-step sequencer that runs in your browser, with a native VST3 for FL Studio in progress. One page, no install, no build, no dependencies.
+A 303-style acid bass synth and 32-step sequencer that runs in your browser (one page, no install, no build, no dependencies), and **My lil acid bass**, the same synth as a VST3 and standalone for FL Studio and other hosts.
+
+## Download the plugin
+
+![My lil acid bass in FL Studio](docs/screenshots/plugin-fl.png)
+
+**[Latest release](https://github.com/Adev-io/my-lil-acid-bassline/releases/latest)**, Windows 10/11 64-bit. Unzip, then:
+
+1. Copy the whole folder `My lil acid bass.vst3` to `C:\Program Files\Common Files\VST3\` (needs admin).
+2. FL Studio: **Options > Manage plugins > Find installed plugins**. Add **My lil acid bass** as an instrument. Other hosts: rescan.
+3. Play it from the piano roll, or turn its sequencer on and press play.
+
+Not code-signed: if SmartScreen warns, **More info > Run anyway**. The window needs WebView2 (built into Windows 11). Details, build-from-source and licence: [plugin/README.md](plugin/README.md).
 
 ## Use it
 
@@ -51,7 +63,7 @@ A 303-style acid bass synth and 32-step sequencer that runs in your browser, wit
 
 **Automate.** Press **Automate** to show min %, max %, `~` and beats-per-sweep under every knob, including the envelope and delay knobs. With `~` on, the knob sweeps between your min and max in time with the tempo.
 
-**MIDI in** (press **MIDI in**, Chrome or Edge): play the synth from a MIDI keyboard, or from FL Studio through a virtual MIDI cable such as [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html). Notes play the voice and, while **Write** is on, record into the selected step; velocity 110 or more is an accent; the Slide and Up/Down buttons apply as they do for the on-screen keys. Controllers: CC74 cutoff, CC71 resonance, CC7 volume. The audio still plays from the browser, so to hear it inside FL you need a virtual audio cable too: for a proper FL instrument see the plugin in progress under `plugin/`.
+**MIDI in** (press **MIDI in**, Chrome or Edge): play the synth from a MIDI keyboard, or from FL Studio through a virtual MIDI cable such as [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html). Notes play the voice and, while **Write** is on, record into the selected step; velocity 110 or more is an accent; the Slide and Up/Down buttons apply as they do for the on-screen keys. Controllers: CC74 cutoff, CC71 resonance, CC7 volume. The audio still plays from the browser, so to hear it inside FL you need a virtual audio cable too: for a proper FL instrument use the plugin (Download above).
 
 **Export.** **Export folder** downloads `303-patterns.zip`: one `.txt` (step notation, tempo, knob settings) and one `.mid` per pattern, plus `song.txt` / `song.mid` for the song chain. In the MIDI, accents are loud notes, slides overlap the next note, and ties hold one note.
 
@@ -61,7 +73,7 @@ Your patterns and knob settings are saved in your browser, under their own key, 
 
 ## FL Studio plugin
 
-[`plugin/`](plugin/) is a native VST3 version built on JUCE, for FL Studio and other hosts. It is in progress (phase 2: voice, parameters, MIDI, slide, accent, drive, delay, reverb, envelopes, and the web page as the window); see [plugin/README.md](plugin/README.md) for what works, how to build it and how to install it in FL.
+[`plugin/`](plugin/) is the native version, built on JUCE: the voice, tweaks, drive, delay, reverb and envelopes, the 32-step sequencer on the host clock, a 128-slot pattern bank, MIDI drag-out, and the web page as its window. Download above; see [plugin/README.md](plugin/README.md) for the feature table and how to build it.
 
 ## Develop
 
@@ -76,3 +88,5 @@ bun test                           # or: node --test
 The web app (`index.html`, `acidbass.js`, `classic/`) is **MIT**. Copyright (c) 2026 Ari Klopfer / A_Development. See [LICENSE](LICENSE).
 
 The native plugin in `plugin/` is **AGPL-3.0-or-later**, because it links the JUCE framework under JUCE's open-source AGPLv3 option. See [plugin/LICENSE](plugin/LICENSE).
+
+The plugin binary embeds the MIT web files (`index.html`, `acidbass.js`, `factory.js`, `ui-bridge.js`) as its window. MIT code inside an AGPL binary is permitted; the combined work is AGPL-3.0-or-later.
