@@ -1,7 +1,7 @@
 # My lil acid bass: VST3 instrument (and a standalone app) built on JUCE.
 # Author: Ari Klopfer / A_Development · AGPL-3.0-or-later (links JUCE, see LICENSE)
 cmake_minimum_required(VERSION 3.22)
-project(MyLilAcidBassline VERSION 0.1.0)
+project(MyLilAcidBassline VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
