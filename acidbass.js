@@ -268,22 +268,38 @@
 
   // Format 0, one track, 480 PPQ. Accent = velocity 127 (else 90). A slide overlaps the next note-on by two ticks, which
   // is how a mono synth is told to glide; a tie never re-triggers, it only holds the note through.
-  function patternsToMidi(pats, bpm, name, gate) {
+  // The optional profile shapes the file for one target: { channel 0-15, velAccent, velNormal, noteRange: [lo, hi], onFold(from, to) }.
+  // No profile is channel 1, velocities 127 / 90 and no folding, the bytes this function always wrote. A noteRange folds out-of-range
+  // notes by octaves (and calls onFold for each one); it has to span at least an octave.
+  function patternsToMidi(pats, bpm, name, gate, profile) {
     const g = gate === undefined ? 0.55 : gate;
+    const pr = profile || {};
+    const ch = int(pr.channel, 0, 15, 0), velAcc = int(pr.velAccent, 1, 127, 127), velNorm = int(pr.velNormal, 1, 127, 90);
+    const range = Array.isArray(pr.noteRange) ? pr.noteRange : null;
+    if (range && !(range[1] - range[0] >= 11)) throw new RangeError('noteRange must span at least an octave');
+    const fold = (m) => {
+      if (!range) return m;
+      let r = m;
+      while (r < range[0]) r += 12;
+      while (r > range[1]) r -= 12;
+      if (r !== m && pr.onFold) pr.onFold(m, r);
+      return r;
+    };
     const ev = [];
     let base = 0;
     for (const pat of pats) {
       let open = null;
-      const off = (tick) => { if (open !== null) { ev.push({ tick, order: 0, bytes: [0x80, open, 0] }); open = null; } };
+      const off = (tick) => { if (open !== null) { ev.push({ tick, order: 0, bytes: [0x80 | ch, open, 0] }); open = null; } };
       for (let i = 0; i < pat.len; i++) {
         const e = stepEvent(pat, i), t = base + i * STEP16;
         if (e.off) continue;
-        const vel = e.accent ? 127 : 90;
-        if (e.trig) { off(t); ev.push({ tick: t, order: 1, bytes: [0x90, e.midi, vel] }); open = e.midi; }
-        else if (e.glide && open !== e.midi) {
-          ev.push({ tick: t, order: 1, bytes: [0x90, e.midi, vel] });
-          if (open !== null) ev.push({ tick: t + 2, order: 0, bytes: [0x80, open, 0] });
-          open = e.midi;
+        const vel = e.accent ? velAcc : velNorm;
+        const midi = e.trig || e.glide ? fold(e.midi) : e.midi;   // a tie only holds the note already open
+        if (e.trig) { off(t); ev.push({ tick: t, order: 1, bytes: [0x90 | ch, midi, vel] }); open = midi; }
+        else if (e.glide && open !== midi) {
+          ev.push({ tick: t, order: 1, bytes: [0x90 | ch, midi, vel] });
+          if (open !== null) ev.push({ tick: t + 2, order: 0, bytes: [0x80 | ch, open, 0] });
+          open = midi;
         }
         if (!e.hold) off(t + Math.round((e.len < 0.9 ? g : e.len) * STEP16));
       }

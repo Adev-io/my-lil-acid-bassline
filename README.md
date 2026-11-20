@@ -67,6 +67,8 @@ Not code-signed: if SmartScreen warns, **More info > Run anyway**. The window ne
 
 **Export.** **Export folder** downloads `303-patterns.zip`: one `.txt` (step notation, tempo, knob settings) and one `.mid` per pattern, plus `song.txt` / `song.mid` for the song chain. In the MIDI, accents are loud notes, slides overlap the next note, and ties hold one note.
 
+**Other tools.** The Export also lists a `.strudel` file per pattern: one Strudel expression with a slot per step, accents as gain, slides as overlap, ties as `_`. `tools/pattern-export.mjs` (Bun or node) turns a pattern into other things: `bun tools/pattern-export.mjs I-A1.txt --to strudel`, `--to notation`, or `--to nubass --out file.mid` for a Volca Nubass MIDI file. Its input can be the exported `.txt`, a pattern JSON, or any `.mid` (a stem's notes, say): it snaps the notes to 16ths, keeps the lowest note per step, folds anything outside MIDI 24-60 by octaves, and prints what it dropped and folded. `--steps N` and `--offset N` pick a window of a longer file. A stem transcribed by notegrab is saved at basic-pitch's placeholder 120 bpm, so its notes would come out scrambled: pass `--grid-bpm` with the song's real tempo (and `--start` with where step 1 falls, in seconds). The tool warns when the notes sit off the grid.
+
 Step notation, one token per step: `C`..`B` note, `C'` high C, `^` `_` octave up/down, `*` accent, `~` slide, `-` rest, `=` tie. Example: `A* - A A^ - A_* A - G~ A - A* - C^ - E~`.
 
 Your patterns and knob settings are saved in your browser, under their own key, separate from the classic version's.
