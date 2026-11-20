@@ -61,4 +61,4 @@ CI (`.github/workflows/plugin.yml`) runs the same steps on every push to `main`;
 
 This folder is **AGPL-3.0-or-later** (see [LICENSE](LICENSE)), because it links the [JUCE](https://juce.com) framework under JUCE's open-source AGPLv3 option. In practice: you can use, change and share it freely, but anyone you give the plugin to must be able to get its source under the same license. Selling it as closed source would need a commercial JUCE licence instead.
 
-The plugin binary embeds the MIT web files (`index.html`, `acidbass.js`, `factory.js`, `ui-bridge.js`) as its window. MIT code inside an AGPL binary is permitted; the combined work is AGPL-3.0-or-later. The rest of this repository stays MIT.
+The plugin binary embeds the MIT web files (`index.html`, `acidbass.js`, `targets.js`, `factory.js`, `ui-bridge.js`) as its window. MIT code inside an AGPL binary is permitted; the combined work is AGPL-3.0-or-later. The rest of this repository stays MIT.
