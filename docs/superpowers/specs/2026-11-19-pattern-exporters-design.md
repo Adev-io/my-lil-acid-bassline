@@ -28,6 +28,7 @@ Pure code, no DOM, written as an IIFE like `acidbass.js` so the `node:vm` loader
 `window.TB303Targets`:
 
 - `toStrudel(pattern, opts)` returns one Strudel expression as a string.
+- `strudelFiles(rawState, title)` returns the page's per-pattern `{name, data}` files, named like the `.txt` beside them.
 - `toNubassMidi(patterns, bpm, profile)` returns MIDI bytes (see Nubass profile).
 
 It reads `TB303.stepEvent` and `TB303.midiOf`; it holds no pattern rules of its own.
@@ -37,11 +38,11 @@ It reads `TB303.stepEvent` and `TB303.midiOf`; it holds no pattern rules of its 
 One pattern is one expression; each step takes one slot in every layer, rests included, so the layers stay aligned.
 
 ```js
-// I-A1 · 16 steps · 120 bpm
-setcps(120/60/4)
+// I-A1 · 10 steps · 120 bpm
+setcps(120/60/2.5)
 note("a2 ~ a2 a3 ~ a1 a2 ~ g2 a2")
   .gain("1 .7 .7 .7 .7 1 .7 .7 .7 .7")
-  .legato("1.05 .55 .55 .55 .55 .55 .55 .55 1.05 .55")
+  .legato(".55 .55 .55 .55 .55 .55 .55 .55 1.05 .55")
   .s("sawtooth")
 ```
 
@@ -49,15 +50,15 @@ note("a2 ~ a2 a3 ~ a1 a2 ~ g2 a2")
 |---|---|
 | note | scientific pitch name; the machine's C2 (MIDI 36) is `c2` |
 | rest `-` | `~` |
-| tie `=` | `_` (extends the previous event, no retrigger) |
+| tie `=` | `_` (extends the previous event, no retrigger); the note before it gets legato 1 so it fills the slots |
 | accent `*` | gain 1 instead of .7 (matches MIDI velocity 127 vs 90) |
 | slide `~` | legato 1.05, so the note runs into the next one; other steps use the pattern's gate length (0.55 default) |
 | octave `^` `_` | carried by the name (`a3`, `a1`) |
 
 The header comment holds the slot name, step count and tempo, and a root note when one is known.
 
-Known limits: Strudel has no pitch glide that was checked, so a slide renders as overlap, not a pitch ramp. The octave
-naming (`c4` = middle C) is believed, not confirmed; see the manual check under Tests.
+Strudel facts, read from the @strudel/core 1.2.6 source: noteToMidi gives c2 = 36 and c4 = 60, an s after a letter is a sharp (cs2), and legato is a synonym of clip, which multiplies the event's duration. A tie on step 1 plays as a rest (nothing before it to extend). The cycle is the whole pattern, so the tempo line is setcps(bpm/60/(len/4)).
+Still unverified until plan Task 4 runs: that _ extends the previous event and that the gain and legato layers line up with it. Strudel has no pitch glide that was checked, so a slide renders as overlap, not a pitch ramp.
 
 ### Nubass MIDI profile
 
@@ -76,13 +77,15 @@ logic is not duplicated. The profile is `{ channel, velAccent, velNormal, accent
 
 `parseMidi` in `acidbass.js` reads live Web MIDI bytes; it is not a file reader, so this is new.
 
-- Reads format 0 or 1 at any PPQ, takes the tempo from the first tempo event, reads all tracks or one (`--track`).
+- Reads format 0 or 1 at any PPQ and the whole tempo map, reads all tracks or one (`--track`), and gives every note its time in ticks and in seconds.
+- Snaps on the file's ticks by default, which is right for DAW and web-app files. A stem transcribed from audio has ticks that do not follow the song (notegrab calls basic-pitch's `predict()` without `midi_tempo`, so every file is saved at 120 bpm and 220 PPQ): `--grid-bpm N`, the song's real tempo, snaps the notes' seconds instead, and `--start S` says where step 1 falls. When the notes sit more than 15% of a step off the grid on average the report warns that the grid is probably wrong, and the CLI names basic-pitch's placeholder when it sees 120 bpm at 220 PPQ.
 - Snaps note starts to the nearest 16th. Velocity of 110 or more is an accent. A note that overlaps the next one is a
   slide. A note that runs past a step boundary with no new note-on is a tie.
 - Polyphony: keeps the lowest note per step (it is a bass) and counts what it drops.
+- A note that runs to the end of the pattern is read as a slide into step 1 when step 1 is a note. That is how patternsToMidi writes a slide off the last step.
 - The machine covers MIDI 24-60 (13 keys, octave -1 to +1). Notes outside fold by octave and are reported.
-- More than 32 steps is an error with a hint (`--bars`, `--offset`), never a silent cut.
-- Every run prints a report: notes read, folded, dropped, and the largest snap in ticks. Sub-project A has to beat that
+- More than 32 steps is an error with a hint (`--offset`, `--steps`), never a silent cut. `--steps` sets the pattern length (1-32); without it the length is the notes' span rounded up to a multiple of 4.
+- Every run prints a report: notes read, folded, dropped, the largest snap as a share of a step, and a warning when the notes sit off the grid. Sub-project A has to beat that
   report.
 
 ### `tools/pattern-export.mjs` (new, Bun)
@@ -93,7 +96,7 @@ without `--force`.
 
 ### Web app
 
-`exportFiles` adds a `<name>.strudel` file next to each `.txt` and `.mid` in the existing Export folder zip. No new UI.
+The page's Export lists `exportFiles` as draggable chips (it does not call `zip` today, whatever the README says). `targets.js` adds a `<name>.strudel` chip next to each `.txt` and `.mid`; `exportFiles` itself cannot, because `acidbass.js` is loaded without `targets.js`. No new UI.
 
 ## Errors
 
@@ -107,13 +110,15 @@ on an empty file and on more than 32 steps.
 - Strudel: exact strings for the six demo patterns; note, gain and legato layers have equal length; a tie is `_`; a slide
   has legato 1.05; an accent has gain 1.
 - Nubass default profile: bytes equal today's `patternsToMidi` output.
-- Round trip: each demo pattern goes `pattern -> patternsToMidi -> smf reader -> formatPattern` and must equal the
-  original text exactly.
+- Round trip: each demo pattern goes `pattern -> patternsToMidi -> reader -> pattern' -> patternsToMidi` and the two files must be byte-identical. Text equality is too strict: C^ and C' are one pitch, and a slide into a rest changes nothing. Where the spelling has one meaning the notation also comes back as written; the reader writes C^ for the pitch the two share.
+  Both checks live in tools/smf.test.mjs.
 - Reader failures: more than 32 steps, a polyphonic file (drop count), an empty file.
 - Manual, once: play the generated Strudel line in the Strudel REPL and compare its pitch with the web app, and compare
   `c2` against the `.strudel` files `notegrab` writes. Record the result in this file.
 
 ## Build order
+
+The plan (`docs/superpowers/plans/2026-11-19-pattern-exporters.md`) refines this: the page lists the `.strudel` chips, and the plugin embeds `targets.js` in its own task.
 
 Each step is its own commit and has its own passing test.
 
@@ -127,5 +132,5 @@ Each step is its own commit and has its own passing test.
 
 ## Out of scope
 
-Live MIDI out, a new interchange format, stem cleanup (sub-project A), pattern generation (sub-project C), EP-133 file
+Live MIDI out, a new interchange format, stem cleanup, finding a stem's tempo and downbeat for --grid-bpm and --start, and notegrab writing its MIDI at the song's tempo (all sub-project A), pattern generation (sub-project C), EP-133 file
 import (how it imports MIDI is unconfirmed).
