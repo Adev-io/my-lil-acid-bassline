@@ -38,7 +38,7 @@ test('readSmf: format 1, a tempo track, running status and a note-on with veloci
   ]);
   const m = readSmf(bytes);
   assert.deepEqual([m.ppq, m.bpm], [480, 120]);
-  assert.deepEqual(plain(m.notes), [{ start: 0, end: 480, note: 60, vel: 100, channel: 0, startSec: 0, endSec: 0.5 }]);
+  assert.deepEqual(plain(m.notes), [{ start: 0, end: 480, note: 60, vel: 100, channel: 0, track: 1, startSec: 0, endSec: 0.5 }]);
   assert.equal(readSmf(bytes, { track: 0 }).notes.length, 0, 'the tempo track has no notes');
 });
 
@@ -131,4 +131,57 @@ test('notesToPattern: nothing to read is an error, not an empty pattern', () => 
   assert.throws(() => notesToPattern([], 480, T), /no notes/);
   assert.throws(() => notesToPattern([note(0, 60, 36)], 480, T, { offset: 8 }), /no notes after/);
   assert.throws(() => notesToPattern([note(2400, 2460, 36)], 480, T, { steps: 4 }), /no notes inside the window/);
+});
+test('round trip: a slide into the same pitch comes back as a slide, and as the same bytes', () => {
+  for (const s of ['C~ C - -', 'C~ C~ C -', 'A* A~ A - G~ G -']) {
+    const p = T.parsePattern(s), bytes = T.patternsToMidi([p], 120, 'x'), m = readSmf(bytes);
+    const back = notesToPattern(m.notes, m.ppq, T, { steps: p.len }).pattern;
+    assert.equal(T.formatPattern(back), s, s);
+    assert.deepEqual(plain([...T.patternsToMidi([back], 120, 'x')]), plain([...bytes]), s + ': the same bytes');
+  }
+});
+
+test('notesToPattern: full-length notes are not a slide off the last step; a gated file\'s held last note is, and says so', () => {
+  const full = [note(0, 120, 36), note(120, 240, 40), note(240, 360, 43), note(360, 480, 45)];
+  assert.equal(T.formatPattern(notesToPattern(full, 480, T, { steps: 4 }).pattern), 'C E G A');
+  const m = readSmf(T.patternsToMidi([T.parsePattern('C E G A')], 120, 'x', 1.0));
+  const r = notesToPattern(m.notes, m.ppq, T, { steps: 4 });
+  assert.equal(T.formatPattern(r.pattern), 'C E G A');
+  assert.equal(r.report.wrapSlide, false);
+  assert.doesNotMatch(describe(r.report), /slide into step 1/);
+  const p = demo.patterns[0], bytes = T.patternsToMidi([p], 120, 'x'), d = readSmf(bytes);
+  const w = notesToPattern(d.notes, d.ppq, T, { steps: p.len });
+  assert.deepEqual(plain([...T.patternsToMidi([w.pattern], 120, 'x')]), plain([...bytes]), 'demo 1 still ends in E~ into A*');
+  assert.equal(w.report.wrapSlide, true);
+  assert.match(describe(w.report), /; read the last note as a slide into step 1 \(it is held to the end of the pattern\)$/);
+});
+
+test('notesToPattern: offset is a whole number from 0 up', () => {
+  for (const offset of [0.5, -1]) assert.throws(() => notesToPattern([note(0, 60, 36), note(120, 180, 40)], 480, T, { offset, steps: 4 }), /--offset must be a whole number from 0 up/, String(offset));
+});
+
+test('readSmf: running status carries across a meta event (but not across sysex)', () => {
+  const m = readSmf(smf(480, [[0, 0x90, 0x24, 0x64], [0, 0xff, 0x01, 0x00], [480, 0x24, 0x00]]));
+  assert.deepEqual(plain(m.notes.map(({ start, end, note }) => [start, end, note])), [[0, 480, 36]]);
+  assert.throws(() => readSmf(smf(480, [[0, 0x90, 0x24, 0x64], [0, 0xf0, 0x01, 0xf7], [480, 0x24, 0x00]])), /bad running status/);
+});
+
+test('readSmf: a note-off on the tick its note opened does not close it', () => {
+  // as a note-on with velocity 0 (the fixture keeps same-tick order), and as a note-off (by hand: the fixture sorts offs first)
+  const vel0 = smf(480, [[0, 0x90, 36, 90], [240, 0x90, 36, 90], [240, 0x90, 36, 0], [480, 0x80, 36, 0]]);
+  const body = [0, 0x90, 36, 90, 0x81, 0x70, 0x90, 36, 90, 0, 0x80, 36, 0, 0x81, 0x70, 0x80, 36, 0, 0, 0xff, 0x2f, 0];
+  const off = Uint8Array.from([...vel0.slice(0, 18), 0, 0, 0, body.length, ...body]);
+  for (const bytes of [vel0, off]) {
+    const m = readSmf(bytes);
+    assert.deepEqual(plain(m.notes.map(({ start, end }) => [start, end])), [[0, 240], [240, 480]]);
+    assert.equal(T.formatPattern(notesToPattern(m.notes, m.ppq, T, { steps: 4 }).pattern), 'C = C =');
+  }
+});
+
+test('readSmf: skips a chunk that is not a track, and refuses a time division of 0', () => {
+  const ok = smf(480, [[0, 0x90, 36, 90], [120, 0x80, 36, 0]]);
+  const withXfih = Uint8Array.from([...ok.slice(0, 14), 0x58, 0x46, 0x49, 0x48, 0, 0, 0, 4, 1, 2, 3, 4, ...ok.slice(14)]);
+  assert.deepEqual(plain(readSmf(withXfih).notes.map(({ start, end, note, track }) => [start, end, note, track])), [[0, 120, 36, 0]]);
+  const zero = Uint8Array.from(ok); zero[12] = 0; zero[13] = 0;
+  assert.throws(() => readSmf(zero), /bad time division 0/);
 });

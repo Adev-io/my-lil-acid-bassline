@@ -7,22 +7,23 @@
 
 export const LO = 24, HI = 60;   // the machine's range: 13 keys, octave -1..+1
 const ACCENT_VEL = 110;          // the plugin's threshold: velocity 110/127 and up is an accent
-const TIE_SLACK = 0.25;          // a note within this much of a whole number of steps counts as that many
 const OFF_GRID = 0.15;           // notes this far from the grid on average (in steps) mean the grid is wrong, not the playing
 
 // d: Uint8Array / Buffer. opts.track: read only this track's notes (0-based); tempo events are read from every track.
-// Returns { ppq, bpm (first tempo, or null), notes: [{ start, end, note, vel, channel, startSec, endSec }] } sorted by start.
+// Returns { ppq, bpm (first tempo, or null), notes: [{ start, end, note, vel, channel, track (0-based), startSec, endSec }] } sorted by start.
 // Ticks are the file's own; seconds follow its whole tempo map.
 export function readSmf(d, opts = {}) {
   const b = Buffer.from(d);
   if (b.length < 14 || b.toString('latin1', 0, 4) !== 'MThd') throw new Error('not a MIDI file');
   const ntrks = b.readUInt16BE(10), division = b.readUInt16BE(12);
   if (division & 0x8000) throw new Error('SMPTE time division is not supported');
+  if (division === 0) throw new Error('bad time division 0');
   let pos = 8 + b.readUInt32BE(4);
   const notes = [], tempos = [];
   for (let t = 0; t < ntrks && pos + 8 <= b.length; t++) {
-    if (b.toString('latin1', pos, pos + 4) !== 'MTrk') throw new Error('missing track chunk');
     const end = Math.min(b.length, pos + 8 + b.readUInt32BE(pos + 4));
+    // a chunk of any other type is for some other program to read: step over it (t counts track chunks only)
+    if (b.toString('latin1', pos, pos + 4) !== 'MTrk') { pos = end; t--; continue; }
     const wanted = opts.track === undefined || opts.track === t;
     let i = pos + 8, tick = 0, status = 0;
     const open = new Map();
@@ -35,15 +36,16 @@ export function readSmf(d, opts = {}) {
       if (st === 0xff) {
         const type = b[i++], len = vlq();
         if (type === 0x51 && len === 3) tempos.push({ tick, us: b.readUIntBE(i, 3) });
-        i += len; status = 0; continue;
+        i += len; continue;   // a meta event leaves running status as it was; sysex (below) cancels it
       }
       if (st === 0xf0 || st === 0xf7) { i += vlq(); status = 0; continue; }
       status = st;
       const kind = st & 0xf0, a = b[i++], v = kind === 0xc0 || kind === 0xd0 ? 0 : b[i++];
       if (!wanted) continue;
       const key = ((st & 15) << 7) | a;
-      if (kind === 0x90 && v > 0) { close(key, tick); open.set(key, { start: tick, note: a, vel: v, channel: st & 15 }); }
-      else if (kind === 0x80 || kind === 0x90) close(key, tick);
+      if (kind === 0x90 && v > 0) { close(key, tick); open.set(key, { start: tick, note: a, vel: v, channel: st & 15, track: t }); }
+      // an off on the tick its note opened belongs to the note before it (already closed by this note-on): ignore it
+      else if ((kind === 0x80 || kind === 0x90) && open.get(key)?.start !== tick) close(key, tick);
     }
     for (const key of [...open.keys()]) close(key, tick);   // a note never switched off ends with its track
     pos = end;
@@ -75,6 +77,7 @@ const stepOf = (m) => { const oct = m === HI ? 1 : Math.floor((m - LO) / 12) - 1
 // Returns { pattern, report }; throws when there is nothing to read or the notes run past 32 steps without a window.
 export function notesToPattern(notes, ppq, T, opts = {}) {
   const offset = opts.offset || 0, origin = opts.startSec || 0;
+  if (!Number.isInteger(offset) || offset < 0) throw new Error('--offset must be a whole number from 0 up');
   if (!notes.length) throw new Error('no notes in the file');
   if (opts.gridBpm !== undefined && !(opts.gridBpm > 0)) throw new Error('--grid-bpm must be a positive number');
   // where a moment sits on the 16th grid, in steps: from ticks, or from seconds at the music's real tempo (bpm / 15 steps a second)
@@ -105,6 +108,7 @@ export function notesToPattern(notes, ppq, T, opts = {}) {
     read: notes.length, kept: kept.length, dropped: inWindow.length - kept.length, folded: 0,
     outside: rows.length - inWindow.length, steps: len,
     maxSnap: Math.max(...snaps), meanSnap, offGrid: meanSnap > OFF_GRID,   // in steps: 0.5 is as far off as a note can be
+    wrapSlide: false,
   };
 
   const p = T.emptyPattern();
@@ -115,13 +119,26 @@ export function notesToPattern(notes, ppq, T, opts = {}) {
     if (midi !== k.note) report.folded++;
     const slide = !!next && next.s === k.s + 1 && k.p1 > next.p0;
     const room = (next ? next.s : len) - k.s - 1;
-    const ties = slide ? 0 : Math.max(0, Math.min(room, len - 1 - k.s, Math.floor(k.p1 - k.p0 + TIE_SLACK) - 1));
     p.steps[k.s] = { gate: 'note', ...stepOf(midi), accent: k.vel >= ACCENT_VEL, slide };
-    for (let t = 1; t <= ties; t++) p.steps[k.s + t].gate = 'tie';
+    if (slide) return;
+    // the steps after its own the note reaches into by more than a hair; a tie holds 0.95 of its step, a note's gate less
+    const dur = k.p1 - k.p0, want = Math.ceil(dur - 1 - 0.02);
+    const ext = Math.max(0, Math.min(want, room, len - 1 - k.s));
+    if (ext < want || dur - ext >= 0.9) { for (let t = 1; t <= ext; t++) p.steps[k.s + t].gate = 'tie'; return; }
+    // ending inside its last step at a gate's length: a slide into the same pitch, which writes no new note-on
+    for (let t = 1; t <= ext; t++) {
+      p.steps[k.s + t - 1].slide = true;
+      p.steps[k.s + t] = { gate: 'note', ...stepOf(midi), accent: false, slide: false };
+    }
   });
   // a note held to the end of the pattern runs into step 1 of the loop: that is how a slide off the last step is written
+  // (only in a file whose notes are gated: when another note stops short of its step's end, a full-length one means held)
   const last = kept[kept.length - 1];
-  if (last.s === len - 1 && last.p1 >= offset + len - 1e-6 && p.steps[0].gate === 'note') p.steps[len - 1].slide = true;
+  const gated = kept.some((k) => k !== last && k.p1 - k.p0 < 0.95);
+  if (gated && last.s === len - 1 && last.p1 >= offset + len - 1e-6 && p.steps[0].gate === 'note') {
+    p.steps[len - 1].slide = true;
+    report.wrapSlide = true;
+  }
   return { pattern: p, report };
 }
 
@@ -130,5 +147,6 @@ export const describe = (r) =>
   'read ' + r.read + ' notes: ' + r.kept + ' kept, ' + r.dropped + ' dropped (one note per step, the lowest stays), ' + r.folded +
   ' folded into MIDI ' + LO + '-' + HI + ', ' + r.outside + ' outside the window; ' + r.steps + ' steps, largest snap to the grid ' +
   pct(r.maxSnap) + ' of a step' +
+  (r.wrapSlide ? '; read the last note as a slide into step 1 (it is held to the end of the pattern)' : '') +
   (r.offGrid ? '\nwarning: the notes sit ' + pct(r.meanSnap) + ' of a step off this grid on average, so the grid is probably wrong: ' +
     'is the tempo right? A stem from notegrab / basic-pitch needs --grid-bpm <song bpm> (and --start <seconds> if step 1 is not at 0)' : '');

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadCore } from './load.mjs';
-import { stemLike } from './fixtures.mjs';
+import { smf, stemLike } from './fixtures.mjs';
 
 const { T } = loadCore();
 const CLI = join(dirname(fileURLToPath(import.meta.url)), 'pattern-export.mjs');
@@ -70,4 +70,69 @@ test('bad input exits 1 with the reason', () => {
   assert.match(run('--to', 'strudel').err, /usage:/);
   assert.match(run(join(dir, 'missing.txt'), '--to', 'strudel').err, /ENOENT/);
   for (const r of [run(put('ok2.txt', 'C\n'), '--to', 'wav'), run(put('bad2.txt', 'Z\n'), '--to', 'strudel')]) assert.equal(r.code, 1);
+});
+
+test('numbers: --bpm and --grid-bpm from 20 to 999, --steps, --offset and --track whole', () => {
+  const f = put('nums.txt', 'C - E\n'), mid = put('nums.mid', T.patternsToMidi([T.parsePattern('C - E')], 120, 'x'));
+  for (const v of ['-120', '0.5', '1e9']) {
+    const r = run(f, '--to', 'strudel', '--bpm', v);
+    assert.equal(r.code, 1, v);
+    assert.match(r.err, /^--bpm must be a number from 20 to 999\n$/, v);
+  }
+  assert.match(run(mid, '--to', 'notation', '--grid-bpm', '5').err, /^--grid-bpm must be a number from 20 to 999\n$/);
+  for (const flag of ['--steps', '--offset', '--track']) {
+    const r = run(mid, '--to', 'notation', flag, '3.5');
+    assert.equal(r.code, 1, flag);
+    assert.match(r.err, new RegExp('^' + flag + ' must be a whole number\n$'), flag);
+  }
+});
+
+test('a .txt takes its tempo from the exported header form only', () => {
+  const r = run(put('acid.txt', '# Acid 128 bpm - I-A1  4 steps  140 bpm\nA* - A C^\n'), '--to', 'strudel');
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^\/\/ acid · 4 steps · 140 bpm\n/);
+});
+
+// bass A A C^ A on channel 1 (index 0), kick and hat on channel 10 (index 9)
+const BASS = [[0, 0x90, 45, 90], [66, 0x80, 45, 0], [120, 0x90, 45, 90], [186, 0x80, 45, 0], [240, 0x90, 48, 90], [306, 0x80, 48, 0], [360, 0x90, 45, 90], [426, 0x80, 45, 0]];
+const DRUMS = [[0, 0x99, 36, 100], [60, 0x89, 36, 0], [120, 0x99, 42, 100], [180, 0x89, 42, 0], [240, 0x99, 36, 100], [300, 0x89, 36, 0], [360, 0x99, 42, 100], [420, 0x89, 42, 0]];
+
+test('a .mid: notes on channel 10 are drums, skipped and counted', () => {
+  const r = run(put('drums.mid', smf(480, [...BASS, ...DRUMS])), '--to', 'notation', '--steps', '4');
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, 'A A C^ A\n');
+  assert.match(r.err, /skipped 4 notes on channel 10 \(drums\)/);
+});
+
+test('a .mid whose notes come from two tracks says to pick one; --track picks it', () => {
+  const a = smf(480, BASS), b = smf(480, [[0, 0x90, 40, 90], [66, 0x80, 40, 0]]);
+  const two = Uint8Array.from([...a.slice(0, 8), 0, 1, 0, 2, ...a.slice(12, 14), ...a.slice(14), ...b.slice(14)]);
+  const f = put('two.mid', two);
+  assert.match(run(f, '--to', 'notation', '--steps', '4').err, /notes come from 2 tracks; pick one with --track \(0-based\)/);
+  const r = run(f, '--to', 'notation', '--steps', '4', '--track', '0');
+  assert.equal(r.out, 'A A C^ A\n');
+  assert.doesNotMatch(r.err, /tracks/);
+});
+
+test('flags: an unknown one, a flag where a value goes, and --start without --grid-bpm exit 1', () => {
+  const f = put('flags.txt', 'C - E\n'), mid = put('flags.mid', T.patternsToMidi([T.parsePattern('C - E')], 120, 'x'));
+  const cases = [
+    [[f, '--to', 'notation', '--stpes', '4'], /^unknown option --stpes\n$/],
+    [[f, '--to', 'nubass', '--out', '--force'], /^--out needs a value\n$/],
+    [[mid, '--to', 'notation', '--start', '0.25'], /^--start needs --grid-bpm\n$/],
+  ];
+  for (const [args, want] of cases) {
+    const r = run(...args);
+    assert.equal(r.code, 1, args.join(' '));
+    assert.match(r.err, want, args.join(' '));
+  }
+  assert.equal(existsSync('--force'), false, 'no file named --force');
+});
+
+test('a .txt with no steps in it exits 1 and says so', () => {
+  for (const text of ['', '# I-A1  4 steps  140 bpm\n# sound: cutoff 45%\n']) {
+    const r = run(put('empty.txt', text), '--to', 'strudel');
+    assert.equal(r.code, 1, JSON.stringify(text));
+    assert.match(r.err, /^no steps in the file\n$/, JSON.stringify(text));
+  }
 });
