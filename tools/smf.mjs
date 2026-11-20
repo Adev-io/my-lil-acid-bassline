@@ -8,6 +8,9 @@
 export const LO = 24, HI = 60;   // the machine's range: 13 keys, octave -1..+1
 const ACCENT_VEL = 110;          // the plugin's threshold: velocity 110/127 and up is an accent
 const OFF_GRID = 0.15;           // notes this far from the grid on average (in steps) mean the grid is wrong, not the playing
+// a stem's slide needs its note to run more than this far (in steps) into the next one, or past the window end for a slide into
+// step 1: a transcriber's release often overlaps the next note by 10-40% of a step, and that is no slide
+const STEM_SLIDE = 0.4;
 
 // d: Uint8Array / Buffer. opts.track: read only this track's notes (0-based); tempo events are read from every track.
 // Returns { ppq, bpm (first tempo, or null), notes: [{ start, end, note, vel, channel, track (0-based), startSec, endSec }] } sorted by start.
@@ -134,8 +137,8 @@ export function notesToPattern(notes, ppq, T, opts = {}) {
     const midi = fold(k.note);
     if (midi !== k.note) report.folded++;
     p.steps[k.s] = { gate: 'note', ...stepOf(midi), accent: k.vel >= ACCENT_VEL, slide: false };
-    // still sounding when the next note starts, and held up to its step: a slide into it, at any distance
-    if (next && k.p1 > next.p0 && k.p1 >= next.s + offset - 0.5) { chain(k, midi, next.s - 1, true); return; }
+    // still sounding when the next note starts (a stem: well into it), and held up to its step: a slide into it, at any distance
+    if (next && k.p1 - next.p0 > (opts.gridBpm ? STEM_SLIDE : 0) && k.p1 >= next.s + offset - 0.5) { chain(k, midi, next.s - 1, true); return; }
     // the steps after its own the note reaches into by more than a hair; a tie holds 0.95 of its step, a note its gate
     const dur = k.p1 - k.p0, want = Math.ceil(dur - 1 - 0.02);
     let ext = Math.max(0, Math.min(want, (next ? next.s : len) - k.s - 1, len - 1 - k.s));
@@ -148,9 +151,11 @@ export function notesToPattern(notes, ppq, T, opts = {}) {
   });
   // a note held to the end of the pattern runs into step 1 of the loop: that is how a slide off the last step is written.
   // Unless the file's notes are full length (another note ends on a step boundary without running into the next one): then held.
+  // A stem's note must run well past the window end, and a stem that goes on past the window holds it to the end instead.
   const last = kept[kept.length - 1];
   const fullGate = kept.some((k, j) => k !== last && Math.abs(k.p1 - Math.round(k.p1)) < 0.01 && k.p1 <= kept[j + 1].p0);
-  if (!fullGate && last.p1 >= offset + len - 1e-6 && p.steps[0].gate === 'note') {
+  const reaches = opts.gridBpm ? last.p1 > offset + len + STEM_SLIDE && !rows.some((r) => r.s >= len) : last.p1 >= offset + len - 1e-6;
+  if (!fullGate && reaches && p.steps[0].gate === 'note') {
     chain(last, fold(last.note), len - 1, true);
     report.wrapSlide = true;
   }

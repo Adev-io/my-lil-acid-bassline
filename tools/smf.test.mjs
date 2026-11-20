@@ -225,13 +225,16 @@ function randomPattern(rnd) {
 // Known lossy, excluded by name: a slide into the same pitch (no new note-on: the note just lasts its gate longer) in a file
 // with no plain note to measure the gate from (every note is held by a tie, a slide or the loop). `C~ C - -` writes one C of
 // 1.55 steps, and a 1.55-step note with nothing to compare it to reads as `C = - -`. Give it any plain note and it reads back.
-const sameSlideNoGate = (p, notes) =>
-  p.steps.slice(0, p.len - 1).some((s, i) => s.gate === 'note' && s.slide && p.steps[i + 1].gate === 'note' && T.midiOf(p.steps[i + 1]) === T.midiOf(s)) &&
-  !notes.some((x) => (x.end - x.start) / 120 < 0.98);
+const sameSlide = (p) =>
+  p.steps.slice(0, p.len - 1).some((s, i) => s.gate === 'note' && s.slide && p.steps[i + 1].gate === 'note' && T.midiOf(p.steps[i + 1]) === T.midiOf(s));
+const sameSlideNoGate = (p, notes) => sameSlide(p) && !notes.some((x) => (x.end - x.start) / 120 < 0.98);
+// Known lossy, excluded by name: gate >= 0.9: a same-pitch slide reads as a tie (hold within 0.05 step). The slid-into step
+// lasts its gate (0.9 or 1.0 of a step) where a tie lasts 0.95, so the two are too close to tell apart and the reader holds it.
+const sameSlideLongGate = (p, g) => g >= 0.9 && sameSlide(p);
 
-test('round trip sweep: 2000 random patterns at six gates come back as the same bytes', () => {
-  const rnd = mulberry32(303), GATES = [0.1, 0.25, 0.4, 0.55, 0.7, 0.85], bad = [];
-  let n = 0, runs = 0, lossy = 0;
+test('round trip sweep: 2000 random patterns at eight gates come back as the same bytes', (t) => {
+  const rnd = mulberry32(303), GATES = [0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 0.9, 1.0], bad = [];
+  let n = 0, runs = 0, lossy = 0, longGate = 0;
   while (n < 2000) {
     const p = randomPattern(rnd);
     if (p.steps[0].gate === 'tie') continue;   // known lossy: a tie on step 1 holds a note from the end of the loop
@@ -240,12 +243,14 @@ test('round trip sweep: 2000 random patterns at six gates come back as the same 
     for (const g of GATES) {
       const { bytes, back, r } = again(p, g);
       if (sameSlideNoGate(p, readSmf(Uint8Array.from(bytes)).notes)) { lossy++; continue; }
+      if (sameSlideLongGate(p, g)) { longGate++; continue; }
       runs++;
       if (JSON.stringify(back) !== JSON.stringify(bytes)) bad.push(g + ': ' + T.formatPattern(p) + ' -> ' + T.formatPattern(r.pattern));
     }
   }
+  t.diagnostic(runs + ' round trips; skipped: ' + lossy + ' sameSlideNoGate, ' + longGate + ' sameSlideLongGate');
   assert.deepEqual(bad.slice(0, 12), [], bad.length + ' of ' + runs + ' round trips differ');
-  assert.ok(runs > 11000 && lossy < 1000, runs + ' round trips, ' + lossy + ' skipped as sameSlideNoGate');
+  assert.ok(runs > 14000 && lossy < 1500 && longGate < 1000, runs + ' round trips, ' + lossy + ' sameSlideNoGate, ' + longGate + ' sameSlideLongGate');
 });
 
 const STEM_LINE = 'A - A - A^ - A - A - G - A - A -';
@@ -281,4 +286,48 @@ test('readSmf: a lone note-off on the tick its note opened gives a zero-length n
   const m = readSmf(Uint8Array.from([...head, 0, 0, 0, body.length, ...body]));
   assert.deepEqual(plain(m.notes.map(({ start, end, note }) => [start, end, note])), [[0, 0, 36], [480, 540, 40]]);
   assert.equal(T.formatPattern(notesToPattern(m.notes, m.ppq, T, { steps: 8 }).pattern), 'C - - - E - - -');
+});
+
+test('a stem\'s consecutive 16ths that release a little late (1.1-1.3 steps) are plain notes, not slides, and no slide off the end', () => {
+  const bpm = 130, step = 15 / bpm, line = 'A C^ A G A A^ A C^';
+  for (const len of [1.1, 1.2, 1.3]) {
+    const m = readSmf(stemOf(line, bpm, () => len * step));
+    const r = notesToPattern(m.notes, m.ppq, T, { steps: 8, gridBpm: bpm });
+    assert.equal(T.formatPattern(r.pattern), line, len + ' steps');
+    assert.equal(r.report.wrapSlide, false, len + ' steps: no slide into step 1');
+  }
+});
+
+test('a stem\'s last-step note a little long (1.1 steps) is no slide into step 1', () => {
+  const bpm = 130, step = 15 / bpm;
+  const m = readSmf(stemOf('A - G - A - - C^', bpm, (i) => (i === 7 ? 1.1 : 0.5) * step));
+  const r = notesToPattern(m.notes, m.ppq, T, { steps: 8, gridBpm: bpm });
+  assert.equal(T.formatPattern(r.pattern), 'A - G - A - - C^');
+  assert.equal(r.report.wrapSlide, false);
+});
+
+test('a swung stem (66%, off-beats a third of a step late) with 0.8-step notes reads the straight line, no slides', () => {
+  const bpm = 130, step = 15 / bpm, line = 'A C^ A G A A^ A C^';
+  const notes = T.parsePattern(line).steps.slice(0, 8).map((s, i) => ({ step: i + (i % 2 ? 1 / 3 : 0), note: T.midiOf(s), sec: 0.8 * step }));
+  const m = readSmf(stemNotes(notes, bpm));
+  const r = notesToPattern(m.notes, m.ppq, T, { steps: 8, gridBpm: bpm });
+  assert.equal(T.formatPattern(r.pattern), line);
+  assert.equal(r.report.wrapSlide, false);
+});
+
+test('a 16-step window of a longer stem: a note held past the window end ties to it, and is no slide into step 1', () => {
+  const bpm = 130, step = 15 / bpm;
+  const bar1 = 'A - A - A^ - A - A - G - A - C^ -', bar2 = 'A - G - - - - - - - - - - - - -';
+  const notes = [bar1, bar2].flatMap((text, bar) => T.parsePattern(text).steps.slice(0, 16).flatMap((s, i) =>
+    s.gate === 'note' ? [{ step: 16 * bar + i, note: T.midiOf(s), sec: (bar === 0 && i === 14 ? 3.8 : 0.5) * step }] : []));
+  const m = readSmf(stemNotes(notes, bpm));
+  const r = notesToPattern(m.notes, m.ppq, T, { steps: 16, offset: 0, gridBpm: bpm });
+  assert.equal(T.formatPattern(r.pattern), 'A - A - A^ - A - A - G - A - C^ =');
+  assert.equal(r.report.wrapSlide, false);
+});
+
+test('a stem\'s genuine legato (the first note runs half a step into the next) still reads as a slide', () => {
+  const bpm = 130, step = 15 / bpm;
+  const m = readSmf(stemOf('A C^ - -', bpm, (i) => (i === 0 ? 1.5 : 0.5) * step));
+  assert.equal(T.formatPattern(notesToPattern(m.notes, m.ppq, T, { steps: 4, gridBpm: bpm }).pattern), 'A~ C^ - -');
 });
