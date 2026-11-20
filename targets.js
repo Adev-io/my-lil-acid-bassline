@@ -57,5 +57,13 @@
     return files;
   }
 
-  window.TB303Targets = { noteName, toStrudel, strudelFiles };
+  // ponytail: the Nubass profile is plain notes and the web app's velocities until Korg's MIDI implementation chart says otherwise (plan Task 10).
+  const NUBASS = { channel: 0, velAccent: 127, velNormal: 90 };
+  // o: name (track name), gate (fraction of a step), profile (overrides of the Nubass profile, e.g. onFold).
+  function toNubassMidi(pats, bpm, o) {
+    const x = o || {};
+    return T.patternsToMidi(pats, bpm, x.name || 'nubass', x.gate, Object.assign({}, NUBASS, x.profile));
+  }
+
+  window.TB303Targets = { noteName, toStrudel, strudelFiles, NUBASS, toNubassMidi };
 })();

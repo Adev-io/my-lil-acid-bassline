@@ -2,11 +2,14 @@
 // Author: Ari Klopfer / A_Development · MIT
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { loadCore } from './tools/load.mjs';
+import { readSmf } from './tools/smf.mjs';
 
 const { T, X } = loadCore();
 const plain = (v) => JSON.parse(JSON.stringify(v));   // the page's objects come from another realm: compare them as plain data
 const demo = T.loadDemo(T.newState());
+const sha = (u8) => createHash('sha1').update(Buffer.from(u8)).digest('hex').slice(0, 16);
 
 test('noteName: scientific pitch, the machine\'s C2 is c2 and its top C is c4', () => {
   assert.deepEqual([36, 45, 57, 37, 24, 60].map(X.noteName), ['c2', 'a2', 'a3', 'cs2', 'c1', 'c4']);
@@ -63,4 +66,32 @@ test('strudelFiles: one per non-empty pattern, named like the .txt beside it, wi
   assert.equal(X.strudelFiles(null).length, 0);
   const first = new TextDecoder().decode(X.strudelFiles(demo)[0].data);
   assert.match(first, /^\/\/ I-A1 · 16 steps · \d+ bpm\nsetcps\(\d+\/60\/4\)\nnote\(/);
+});
+
+test('patternsToMidi with no profile is byte-for-byte what it was before profiles existed', () => {
+  assert.equal(demo.patterns.slice(0, 6).map((p) => sha(T.patternsToMidi([p], 120, 'x'))).join(' '),
+    'c05173ab3ca6d356 d01c0e894a6225fa e0768e8e915cc71d add0d63f385f5697 cf00c98a972b5d92 2ae598400d37a327');
+  assert.equal(sha(T.patternsToMidi(demo.song.map((i) => demo.patterns[i]), 120, 'song')), '87db5cdbb54e52b8');
+  assert.equal(sha(T.patternsToMidi([demo.patterns[2]], 93, 'g', 0.8)), 'eeb7ae3f311c5e33');
+});
+
+test('patternsToMidi profile: channel and velocities', () => {
+  const m = readSmf(T.patternsToMidi([T.parsePattern('C* - E')], 120, 'x', undefined, { channel: 2, velAccent: 100, velNormal: 50 }));
+  assert.deepEqual(plain(m.notes.map((n) => [n.channel, n.note, n.vel])), [[2, 36, 100], [2, 40, 50]]);
+});
+
+test('patternsToMidi profile: noteRange folds by octaves, reports each fold, keeps a slide balanced', () => {
+  const folds = [];
+  const bytes = T.patternsToMidi([T.parsePattern('C_ C^ D~ A^')], 120, 'x', undefined, { noteRange: [36, 47], onFold: (a, b) => folds.push([a, b]) });
+  assert.deepEqual(plain(folds), [[24, 36], [48, 36], [57, 45]]);   // D~ is 38: in range, so it is not reported
+  const notes = readSmf(bytes).notes;
+  assert.ok(notes.every((n) => n.note >= 36 && n.note <= 47));
+  assert.equal(notes.length, 4);
+  assert.throws(() => T.patternsToMidi([T.parsePattern('C')], 120, 'x', undefined, { noteRange: [36, 40] }), /noteRange must span/);
+});
+
+test('toNubassMidi: today the Nubass profile is the default bytes, and a caller can still override', () => {
+  assert.equal(sha(X.toNubassMidi([demo.patterns[0]], 120, { name: 'x' })), 'c05173ab3ca6d356');
+  const m = readSmf(X.toNubassMidi([T.parsePattern('C*')], 120, { profile: { channel: 5 } }));
+  assert.equal(m.notes[0].channel, 5);
 });
