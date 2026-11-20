@@ -3,11 +3,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore } from './load.mjs';
-import { readSmf } from './smf.mjs';
+import { describe, notesToPattern, readSmf } from './smf.mjs';
 import { smf, stemLike, tempo } from './fixtures.mjs';
 
 const { T } = loadCore();
 const plain = (v) => JSON.parse(JSON.stringify(v));
+const demo = T.loadDemo(T.newState());
+const note = (start, end, n, vel = 90) => ({ start, end, note: n, vel, channel: 0 });
 
 test('readSmf: reads what patternsToMidi writes, in ticks and in seconds', () => {
   const m = readSmf(T.patternsToMidi([T.parsePattern('C* - E')], 120, 'x'));
@@ -44,4 +46,89 @@ test('readSmf: refuses what is not a usable MIDI file', () => {
   assert.throws(() => readSmf(Uint8Array.from([1, 2, 3])), /not a MIDI file/);
   const smpte = Uint8Array.from([0x4d, 0x54, 0x68, 0x64, 0, 0, 0, 6, 0, 0, 0, 1, 0xe7, 0x28]);
   assert.throws(() => readSmf(smpte), /SMPTE/);
+});
+
+test('round trip: every demo pattern goes to a .mid and back to the same .mid', () => {
+  demo.patterns.slice(0, 6).forEach((p, i) => {
+    const bytes = T.patternsToMidi([p], 120, 'x');
+    const m = readSmf(bytes);
+    const r = notesToPattern(m.notes, m.ppq, T, { steps: p.len });
+    assert.deepEqual(plain([...T.patternsToMidi([r.pattern], 120, 'x')]), plain([...bytes]), 'pattern ' + i);
+    assert.equal(r.report.dropped + r.report.folded + r.report.outside, 0, 'pattern ' + i + ' reads cleanly');
+  });
+});
+
+test('round trip: the notation comes back as written when its spelling has one meaning', () => {
+  for (const s of ['C* - E', 'C~ G -', 'C = -', 'A* - A A^ - A_* A - G~ A', "G# - C' -"]) {
+    const p = T.parsePattern(s), m = readSmf(T.patternsToMidi([p], 120, 'x'));
+    const text = T.formatPattern(notesToPattern(m.notes, m.ppq, T, { steps: p.len }).pattern);
+    assert.equal(text, s === "G# - C' -" ? 'G# - C^ -' : s, s);   // C' and C^ are one pitch; the reader writes C^
+  }
+});
+
+test('notesToPattern: without steps the length is the span rounded up to a multiple of 4', () => {
+  assert.equal(notesToPattern([note(0, 60, 36), note(480, 540, 40)], 480, T).pattern.len, 8);
+  assert.equal(notesToPattern([note(0, 60, 36)], 480, T).pattern.len, 4);
+});
+
+test('notesToPattern: a chord keeps its lowest note and counts the rest', () => {
+  const r = notesToPattern([note(0, 60, 43), note(0, 60, 36), note(0, 60, 40)], 480, T, { steps: 4 });
+  assert.equal(T.formatPattern(r.pattern), 'C - - -');
+  assert.deepEqual(plain([r.report.read, r.report.kept, r.report.dropped]), [3, 1, 2]);
+});
+
+test('notesToPattern: notes outside MIDI 24-60 fold by octaves and are counted', () => {
+  const r = notesToPattern([note(0, 60, 20), note(120, 180, 70)], 480, T, { steps: 4 });
+  assert.equal(T.formatPattern(r.pattern), 'G#_ A#^ - -');   // tick 120 is step 2 of 4 at 480 PPQ: index 1
+  assert.equal(r.report.folded, 2);
+});
+
+test('notesToPattern: the report names the largest snap to the grid, and a little looseness is no warning', () => {
+  const r = notesToPattern([note(10, 70, 36), note(130, 190, 38)], 480, T, { steps: 4 });
+  assert.ok(Math.abs(r.report.maxSnap - 10 / 120) < 1e-9);
+  assert.equal(r.report.offGrid, false);
+  assert.match(describe(r.report), /largest snap to the grid 8% of a step$/);
+});
+
+const LINE = 'A* - A A^ - A_* A - G A - A* - C^ - E';   // demo 1 without its slides: a transcription cannot show an overlap
+
+test('a stem at its placeholder tempo: snapping on ticks scrambles it, and the report says the grid is wrong', () => {
+  const m = readSmf(stemLike(T, LINE, 128));
+  assert.deepEqual([m.ppq, m.bpm], [220, 120]);
+  const r = notesToPattern(m.notes, m.ppq, T, { steps: 16 });
+  assert.notEqual(T.formatPattern(r.pattern), LINE);
+  assert.equal(r.report.offGrid, true);
+  assert.match(describe(r.report), /warning: the notes sit \d+% of a step off this grid.*--grid-bpm/);
+  assert.ok(r.report.dropped > 0, 'scrambling also lands two notes on one step');
+});
+
+test('the same stem with gridBpm, the song\'s real tempo, comes back exactly', () => {
+  const m = readSmf(stemLike(T, LINE, 128));
+  const r = notesToPattern(m.notes, m.ppq, T, { steps: 16, gridBpm: 128 });
+  assert.equal(T.formatPattern(r.pattern), LINE);
+  assert.equal(r.report.offGrid, false);
+});
+
+test('gridBpm with startSec: a stem whose step 1 is half a second in, played 8 ms loose', () => {
+  const m = readSmf(stemLike(T, LINE, 128, 0.5, 8));
+  assert.notEqual(T.formatPattern(notesToPattern(m.notes, m.ppq, T, { steps: 16, gridBpm: 128 }).pattern), LINE, 'without startSec the grid is shifted');
+  const r = notesToPattern(m.notes, m.ppq, T, { steps: 16, gridBpm: 128, startSec: 0.5 });
+  assert.equal(T.formatPattern(r.pattern), LINE);
+  assert.ok(r.report.maxSnap < 0.1, 'the 8 ms wobble is under a tenth of a step at 128 bpm');
+  assert.throws(() => notesToPattern(m.notes, m.ppq, T, { gridBpm: 0 }), /--grid-bpm must be a positive number/);
+});
+
+test('notesToPattern: past 32 steps is an error that names the window options; steps and offset pick a window', () => {
+  const long = [note(0, 60, 36), note(40 * 120, 40 * 120 + 60, 40)];
+  assert.throws(() => notesToPattern(long, 480, T), /more than 32 steps \(41\).*--offset.*--steps/);
+  const r = notesToPattern(long, 480, T, { offset: 40, steps: 4 });
+  assert.equal(T.formatPattern(r.pattern), 'E - - -');
+  assert.equal(r.report.outside, 1);
+  assert.throws(() => notesToPattern(long, 480, T, { steps: 33 }), /1 to 32/);
+});
+
+test('notesToPattern: nothing to read is an error, not an empty pattern', () => {
+  assert.throws(() => notesToPattern([], 480, T), /no notes/);
+  assert.throws(() => notesToPattern([note(0, 60, 36)], 480, T, { offset: 8 }), /no notes after/);
+  assert.throws(() => notesToPattern([note(2400, 2460, 36)], 480, T, { steps: 4 }), /no notes inside the window/);
 });
