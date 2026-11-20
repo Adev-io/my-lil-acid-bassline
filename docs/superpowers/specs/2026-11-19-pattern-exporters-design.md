@@ -58,7 +58,7 @@ note("a2 ~ a2 a3 ~ a1 a2 ~ g2 a2")
 The header comment holds the slot name, step count and tempo, and a root note when one is known.
 
 Strudel facts, read from the @strudel/core 1.2.6 source: noteToMidi gives c2 = 36 and c4 = 60, an s after a letter is a sharp (cs2), and legato is a synonym of clip, which multiplies the event's duration. A tie on step 1 plays as a rest (nothing before it to extend). The cycle is the whole pattern, so the tempo line is setcps(bpm/60/(len/4)).
-Still unverified until plan Task 4 runs: that _ extends the previous event and that the gain and legato layers line up with it. Strudel has no pitch glide that was checked, so a slide renders as overlap, not a pitch ramp.
+Checked against @strudel/core 1.2.0 on 2026-11-19 (plan Task 4): _ extends the previous event, and the gain and legato layers line up with the notes and ties. (1.2.6, the latest release, does not load outside the browser: it imports SalatRepl, which @kabelsalat/web 0.4.1 does not export; the mapping uses only core mini-notation, so 1.2.0 stands in.) Strudel has no pitch glide that was checked, so a slide renders as overlap, not a pitch ramp.
 
 ### Nubass MIDI profile
 
