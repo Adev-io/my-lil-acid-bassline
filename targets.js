@@ -4,6 +4,7 @@
 (function () {
   'use strict';
   const T = window.TB303;
+  const enc = new TextEncoder();
 
   const PC = ['c', 'cs', 'd', 'ds', 'e', 'f', 'fs', 'g', 'gs', 'a', 'as', 'b'];
   // Scientific pitch, the way Strudel reads it: MIDI 36 is c2, MIDI 60 is c4.
@@ -42,5 +43,19 @@
     ].join('\n');
   }
 
-  window.TB303Targets = { noteName, toStrudel };
+  // The page's Export gets one .strudel per non-empty pattern, named like the .txt and .mid beside it ([{name, data}]).
+  function strudelFiles(raw, title) {
+    const S = T.cleanState(raw);
+    const pre = T.fileTitle(title) ? T.fileTitle(title) + ' - ' : '';
+    const bpm = T.bpmOf(S.knobs.tempo), gate = T.gateFrac(S.knobs.gate);
+    const files = [];
+    S.patterns.forEach((p, i) => {
+      if (!p.steps.slice(0, p.len).some((s) => s.gate !== 'rest')) return;   // an untouched slot is not a pattern
+      const name = pre + T.slotName(i);
+      files.push({ name: name + '.strudel', data: enc.encode(toStrudel(p, { name, bpm, gate })) });
+    });
+    return files;
+  }
+
+  window.TB303Targets = { noteName, toStrudel, strudelFiles };
 })();

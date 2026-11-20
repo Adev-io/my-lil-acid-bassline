@@ -55,3 +55,12 @@ test('toStrudel: the six demo patterns keep the layers the same length and every
     });
   }
 });
+
+test('strudelFiles: one per non-empty pattern, named like the .txt beside it, with the title', () => {
+  const names = (fs) => plain(fs.map((f) => f.name));
+  assert.deepEqual(names(X.strudelFiles(demo)), names(T.exportFiles(demo).filter((f) => f.name.endsWith('.txt') && f.name !== 'song.txt')).map((n) => n.replace(/\.txt$/, '.strudel')));
+  assert.ok(names(X.strudelFiles(demo, ' Acid/Rain: v2? ')).every((n) => n.startsWith('AcidRain v2 - ') && n.endsWith('.strudel')));
+  assert.equal(X.strudelFiles(null).length, 0);
+  const first = new TextDecoder().decode(X.strudelFiles(demo)[0].data);
+  assert.match(first, /^\/\/ I-A1 · 16 steps · \d+ bpm\nsetcps\(\d+\/60\/4\)\nnote\(/);
+});
