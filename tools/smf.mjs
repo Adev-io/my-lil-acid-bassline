@@ -28,7 +28,8 @@ export function readSmf(d, opts = {}) {
     let i = pos + 8, tick = 0, status = 0;
     const open = new Map();
     const vlq = () => { let v = 0, c; do { c = b[i++]; v = (v << 7) | (c & 127); } while (c & 128 && i < end); return v; };
-    const close = (key, at) => { const n = open.get(key); if (n) { notes.push({ ...n, end: at }); open.delete(key); } };
+    const retrig = new Map();   // key -> the tick its open note was opened on by a note-on that closed the one before it
+    const close = (key, at) => { const n = open.get(key); if (n) { notes.push({ ...n, end: at }); open.delete(key); } return !!n; };
     while (i < end) {
       tick += vlq();
       let st = b[i];
@@ -43,9 +44,13 @@ export function readSmf(d, opts = {}) {
       const kind = st & 0xf0, a = b[i++], v = kind === 0xc0 || kind === 0xd0 ? 0 : b[i++];
       if (!wanted) continue;
       const key = ((st & 15) << 7) | a;
-      if (kind === 0x90 && v > 0) { close(key, tick); open.set(key, { start: tick, note: a, vel: v, channel: st & 15, track: t }); }
-      // an off on the tick its note opened belongs to the note before it (already closed by this note-on): ignore it
-      else if ((kind === 0x80 || kind === 0x90) && open.get(key)?.start !== tick) close(key, tick);
+      if (kind === 0x90 && v > 0) {
+        if (close(key, tick)) retrig.set(key, tick); else retrig.delete(key);
+        open.set(key, { start: tick, note: a, vel: v, channel: st & 15, track: t });
+      }
+      // an off on the tick a retrigger opened its note belongs to the note before it (already closed by that note-on): ignore
+      // it, once. Any other off closes its note, even on the tick it opened: a note of zero length.
+      else if (kind === 0x80 || kind === 0x90) { if (retrig.get(key) === tick) retrig.delete(key); else close(key, tick); }
     }
     for (const key of [...open.keys()]) close(key, tick);   // a note never switched off ends with its track
     pos = end;
@@ -113,30 +118,40 @@ export function notesToPattern(notes, ppq, T, opts = {}) {
 
   const p = T.emptyPattern();
   p.len = len;
+  // how long this file holds a plain note, in steps: a held note whose overhang matches it is a slide into the same pitch, which
+  // writes no new note-on. Only a file with gated notes shows one (tick mode); a transcription's lengths say nothing about it.
+  const short = kept.map((k) => k.p1 - k.p0).filter((d) => d < 0.98).sort((a, b) => a - b);
+  const gate = opts.gridBpm || !short.length ? null : (short[(short.length - 1) >> 1] + short[short.length >> 1]) / 2;
+  // k's pitch on every step from k.s to `to`, each sliding into the next; the last slides on only when lastSlides
+  const chain = (k, midi, to, lastSlides) => {
+    for (let s = k.s; s <= to; s++) {
+      if (s > k.s) p.steps[s] = { gate: 'note', ...stepOf(midi), accent: false, slide: false };
+      p.steps[s].slide = s < to || lastSlides;
+    }
+  };
   kept.forEach((k, j) => {
     const next = kept[j + 1];
     const midi = fold(k.note);
     if (midi !== k.note) report.folded++;
-    const slide = !!next && next.s === k.s + 1 && k.p1 > next.p0;
-    const room = (next ? next.s : len) - k.s - 1;
-    p.steps[k.s] = { gate: 'note', ...stepOf(midi), accent: k.vel >= ACCENT_VEL, slide };
-    if (slide) return;
-    // the steps after its own the note reaches into by more than a hair; a tie holds 0.95 of its step, a note's gate less
+    p.steps[k.s] = { gate: 'note', ...stepOf(midi), accent: k.vel >= ACCENT_VEL, slide: false };
+    // still sounding when the next note starts, and held up to its step: a slide into it, at any distance
+    if (next && k.p1 > next.p0 && k.p1 >= next.s + offset - 0.5) { chain(k, midi, next.s - 1, true); return; }
+    // the steps after its own the note reaches into by more than a hair; a tie holds 0.95 of its step, a note its gate
     const dur = k.p1 - k.p0, want = Math.ceil(dur - 1 - 0.02);
-    const ext = Math.max(0, Math.min(want, room, len - 1 - k.s));
-    if (ext < want || dur - ext >= 0.9) { for (let t = 1; t <= ext; t++) p.steps[k.s + t].gate = 'tie'; return; }
-    // ending inside its last step at a gate's length: a slide into the same pitch, which writes no new note-on
-    for (let t = 1; t <= ext; t++) {
-      p.steps[k.s + t - 1].slide = true;
-      p.steps[k.s + t] = { gate: 'note', ...stepOf(midi), accent: false, slide: false };
+    let ext = Math.max(0, Math.min(want, (next ? next.s : len) - k.s - 1, len - 1 - k.s));
+    if (ext === want && ext > 0) {
+      const tail = dur - ext;
+      if (gate !== null && Math.abs(tail - gate) <= 0.15 && tail < 0.9) { chain(k, midi, k.s + ext, false); return; }
+      if (tail < 0.3) ext--;   // a note that runs a little long (a transcriber's minimum length, a loose DAW note) holds no step
     }
+    for (let t = 1; t <= ext; t++) p.steps[k.s + t].gate = 'tie';
   });
-  // a note held to the end of the pattern runs into step 1 of the loop: that is how a slide off the last step is written
-  // (only in a file whose notes are gated: when another note stops short of its step's end, a full-length one means held)
+  // a note held to the end of the pattern runs into step 1 of the loop: that is how a slide off the last step is written.
+  // Unless the file's notes are full length (another note ends on a step boundary without running into the next one): then held.
   const last = kept[kept.length - 1];
-  const gated = kept.some((k) => k !== last && k.p1 - k.p0 < 0.95);
-  if (gated && last.s === len - 1 && last.p1 >= offset + len - 1e-6 && p.steps[0].gate === 'note') {
-    p.steps[len - 1].slide = true;
+  const fullGate = kept.some((k, j) => k !== last && Math.abs(k.p1 - Math.round(k.p1)) < 0.01 && k.p1 <= kept[j + 1].p0);
+  if (!fullGate && last.p1 >= offset + len - 1e-6 && p.steps[0].gate === 'note') {
+    chain(last, fold(last.note), len - 1, true);
     report.wrapSlide = true;
   }
   return { pattern: p, report };

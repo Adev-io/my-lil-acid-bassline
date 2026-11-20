@@ -28,3 +28,15 @@ export function stemLike(T, text, realBpm, startSec = 0, jitterMs = 0) {
   });
   return smf(220, ev);
 }
+
+// A stem with explicit lengths, the way a transcriber leaves them: notes [{ step, note, sec, vel }], each starting on its
+// 16th at bpm (plus opts.startSec) and lasting sec seconds, written at basic-pitch's placeholder 120 bpm and 220 PPQ.
+export function stemNotes(notes, bpm, opts = {}) {
+  const tick = (sec) => Math.round(sec * 2 * 220), from = opts.startSec || 0;
+  const ev = [tempo(0, 120)];
+  for (const n of notes) {
+    const at = from + n.step * 15 / bpm;
+    ev.push([tick(at), 0x90, n.note, n.vel || 90], [tick(at + n.sec), 0x80, n.note, 0]);
+  }
+  return smf(220, ev);
+}
