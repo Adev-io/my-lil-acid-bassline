@@ -20,11 +20,11 @@ new modules or new code. If a gap shows up while building (a missing module beha
 
 ```
 Clocked 124 bpm ─> Drums (16ths), Acid Bass, Roll, Ripple, Slider (one clock, one reset)
-Drums (909-style)  pad 1 kick out ─> Mixer SC (whole mix pumps off the kick); mix L/R ─> strips 1-2
-Acid Bass          ─> strip 3   lead acid, 32 steps, slots 1-4
-AcidVoice          ─> strip 4   answer acid, fed by Slider B through Arpeggio
-Roll ─> Triple     ─> strip 5   chords; My lil Filter on the stab bus
-Slider A ─> Harmony ─> Triple #2 ─> strip 6   hook; Harmony follows Roll's chords
+Drums              pad 1 kick out ─> Mixer SC (whole mix pumps off the kick); mix L/R ─> strip 1
+Acid Bass          ─> strip 2   lead acid, 32 steps, slots 1-4
+AcidVoice          ─> strip 3   answer acid, fed by Slider B through Arpeggio
+Roll ─> Triple     ─> strip 4   chords; My lil Filter on the stab bus
+Slider A ─> Harmony ─> Triple #2 ─> strip 5   hook; Harmony follows Roll's chords
 Ripple             polyrhythm triggers and ENV: cutoff CV for the stab Filter, accent for Triple #2
 Send 1 delay (dotted 1/8), Send 2 reverb (third-party FX at first), returns into the Mixer
 Mixer master soft clip ─> Audio (WASAPI until the Steinberg interface is back)
@@ -41,22 +41,22 @@ pad (break), 3 syncopated 3-3-2 stab (drop).
 **Acid Bass.** A as a pedal (root of Am, 3rd of F, 6th of C, 9th of G), A minor pentatonic (A C D E G), A1/A2 octave jumps,
 slides into the octave, accent every third 16th. Slots: 1 sparse intro, 2 main groove, 3 busy drop, 4 break with long slides.
 
-**Hook.** Slider A, 16 steps inside A3-A4, through Harmony. Chord-tones-only mode in the drop, scale mode in the groove and
+**Hook.** Slider A, an 8-step motif (A4 to E5; Slider A and B are 8 steps each), through Harmony. Chord-tones-only mode in the drop, scale mode in the groove and
 break. Triple #2: pulse pluck, short decay, dotted-1/8 delay.
 
 **Answer acid.** Slider B through Arpeggio (A minor) into AcidVoice, an octave up (A2-A3). Plays in the gaps of the lead acid in
 Groove and Drop only.
 
-**Drums.** Four on the floor kick, clap on 2 and 4, offbeat closed hats plus 16th shaker with velocity variation, open hat and
-ride in the drop only, syncopated rim with a fill in bar 8. Swing about 54 percent. A 909-style kit is needed; the kits on disk
-are checked at step s2.
+**Drums.** Four on the floor kick, clap on 2 and 4, offbeat closed hats plus quiet 16th closed hats as the shaker, open hat in
+the drop only, syncopated rim. The My lil Drums kit has kick, snare, chat, ohat, clap, rim, tom and crash (no ride, no shaker).
+Swing is left to the ear after s9.
 
 **Mix roles.** Kick and acid low, centre, dry. Stabs mid, ducked hard. Hook upper-mid with delay. Pads wide with reverb.
 
 ## Movement
 
 - Ripple periods 3, 5, 7 and 16 sixteenths. ENV drives the stab Filter cutoff CV (stabs pulse in polyrhythm against 4/4). Accent
-  fires the Triple #2 filter envelope once per cycle.
+  is not wired (Triple has no trigger input).
 - A slow LFO (16-bar cycle) rides the AcidVoice cutoff.
 - Each scene changes the Acid Bass slot, so the riff evolves every 16 bars.
 
@@ -67,7 +67,7 @@ are checked at step s2.
 | Break | no kick | slot 4 | pad | scale, reverb up | off | wet |
 | Drop | full + open hat, ride | slot 3 | 3-3-2 stab | chord tones | on | delay |
 
-Transit morph time is 1 bar. Hands: four macro knobs by mouse: acid cutoff, acid resonance, stab Filter cutoff, hook delay send.
+Scenes are recalled by the `scene()` function (the MCP cannot map Transit's knobs). Hands: four macro knobs by mouse: acid cutoff, acid resonance, stab Filter cutoff, hook delay send.
 Later, LooperSong can record which scene played on which bar.
 
 ## Build steps
@@ -84,7 +84,7 @@ Each step is one change to the live Rack.
 | s6 | Slider B, Arpeggio, AcidVoice | quantized notes only A minor |
 | s7 | Ripple, LFO, Filter | cutoff CV moves (voltage read) |
 | s8 | Delay and reverb sends and returns | returns present, master LUFS about -12 to -10 |
-| s9 | Transit, 4 scenes | each scene recalls, no audible clicks |
+| s9 | 4 scenes by script (`scene()`); Transit capture by mouse is an optional step by Ari | each scene recalls, master peak stays below -1 dBFS |
 
 At every step: Claude measures, Ari listens and says keep or adjust, Claude saves
 `my-lil-acid-house-sN-<name>.vcv` in the Rack patches folder. The next step starts only after a keep.
@@ -94,7 +94,8 @@ At every step: Claude measures, Ari listens and says keep or adjust, Claude save
 - MCP down: stop and tell Ari.
 - Rack crash: reopen the last numbered save; answer No to the "clear your patch" dialog.
 - Never kill Ari's running Rack.
-- The MCP calls go through the existing `tools/rack.mjs` or direct HTTP to `http://127.0.0.1:2600/mcp`. No new code files.
+- The MCP calls go through the existing `tools/rack.mjs`. The build helper (`ah.mjs`, `build.mjs`) lives outside the repo in
+  `Desktop\claude artifacts\my-lil-acid-bassline\acid-house`; no new code files in the repo.
 - Audio device: WASAPI until the Steinberg interface is back; reselect it then.
 
 ## Done when
