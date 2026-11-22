@@ -52,8 +52,8 @@ function table(res, ear) {
 async function main(argv) {
   const flags = argv.filter((a) => a.startsWith('--')), [crate, section, ...rest] = argv.filter((a) => !a.startsWith('--'));
   if (!crate || !section || rest.length || flags.length > 1 || (flags[0] && flags[0] !== '--load' && flags[0] !== '--restore')) throw new Error(USAGE);
-  const out = join(UVR, 'notegrab', 'stem-test', crate + '-' + section);
-  if (flags[0] === '--restore') { await restoreRack(out); return 0; }
+  const root = join(UVR, 'notegrab', 'stem-test'), out = join(root, crate + '-' + section);   // root holds the one before.json
+  if (flags[0] === '--restore') { await restoreRack(root); return 0; }
   const dir = join(UVR, 'crates', crate);
   if (!existsSync(dir)) throw new Error('no crate folder ' + dir);
   const files = readdirSync(dir), esc = section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -101,7 +101,7 @@ async function main(argv) {
   const md = join(out, 'results.md'), text = table(res, earOf(md));
   writeFileSync(md, text);
   console.log(text + '\n' + out);
-  if (flags[0] === '--load') await loadIntoRack(out);
+  if (flags[0] === '--load') await loadIntoRack(out, new Set(rows.map((r) => r.part)), root);
   return fails ? 1 : 0;
 }
 

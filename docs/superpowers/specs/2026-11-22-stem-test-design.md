@@ -60,15 +60,18 @@ verdict carries those parts. For the bass, F1 measures what the mono reader drop
 - `--load` writes the winners into the open patch over the Rack MCP's HTTP endpoint (`http://127.0.0.1:2600/mcp`,
   `tools/call`), into fixed test slots: bass → Acid Bass slot index 4 (shown as **I-A5**), guitar → Roll pattern **16**,
   other → Roll pattern **15**. No other slot changes.
+- `--load` pushes only the parts this run produced; part files left in the section folder by an earlier run are not sent.
 - **Backup first:** before any write it saves the Acid Bass and Roll module states and Triple's V/OCT and GATE input cables to
-  `before.json` in the run folder. If `before.json` already exists it is kept (the first backup is the real one).
+  `before.json`, one file in the stem-test folder (`notegrab/stem-test/`) shared by all sections. If `before.json` already
+  exists it is kept (the first backup is the real one), so loading section X then section Y still restores to the state before X.
 - It then patches Roll V/OCT → Triple V/OCT and Roll GATE → Triple GATE, replacing whatever fed those inputs.
-- `--restore` puts back both module states and Triple's original input cables from `before.json`, then renames it
-  `before.restored-<timestamp>.json`.
+- `--restore` (still given the crate and section) puts back only the three test slots (Acid Bass slot index 4, Roll patterns 15
+  and 16) and Triple's original input cables from `before.json`; the current state of every other slot, and Roll's key and
+  mode, is kept. It then renames the backup `before.restored-<timestamp>.json` in the same folder.
 - Module states are sent as `{ id, plugin, model, version, data }` (Rack's `moduleFromJson` needs `plugin`; params are left alone).
   Acid Bass's `data.patterns` must list every slot in order: a missing slot loads empty.
 - Rack not running (connection refused) → "open the patch in Rack first", nothing written. A module missing from the patch
-  (no Acid Bass, Roll or Triple) → name it and stop before any write.
+  (no Acid Bass, Roll or Triple), or a second one of the same kind → name it and stop before any write.
 - Switching by hand: Acid Bass PATTERN I-A1 (yours) vs I-A5; Roll PATTERN 14 (yours) vs 15 / 16.
 - **Verdict:** Ari fills the `ear` column in `results.md` with `keep`, `close` or `bad` per part. A `keep` with a low F1 (or a `bad`
   with a high one) means the score is wrong, not the ear.
