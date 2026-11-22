@@ -32,9 +32,9 @@ bun tools/stem-test.mjs arrow-rapsong-crate 04_hook
    (`uvrcore.notes.grab`, mode `loop`, outputs json+midi+html) with the venv Python in `~/dev/mcp-servers/my-lil-uvr-mcp`.
 2. **Convert.**
    - **bass → Acid Bass** (mono, 32 steps): `notesToPattern` with `gridBpm` = section bpm, `startSec` 0, `steps` 32, tried at every
-     offset 0, 32, 64, … that holds notes. Each window is scored (below); the best F1 wins, ties go to the earlier window.
+     offset 0, 32, 64, … that holds notes. Each window is scored (below); the window with the most stem notes kept wins, then the higher F1, then the earlier window.
    - **guitar, other → Roll** (polyphonic): every note snapped to 1/16 at the section bpm (Roll PPQ 96, a 16th = 24 ticks, minimum
-     length one 16th), the whole section in one pattern (`bars` = section length in bars rounded up, max 16). No window search:
+     length one 16th), the whole section in one pattern (`bars` = enough bars to hold the last note start, max 16). No window search:
      Roll holds the whole section.
 3. **Score** each part (below) and print one table row per part: part, target, window (bass only), F1, kept / dropped / extra,
    off-grid % (the reader's own report).

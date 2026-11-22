@@ -83,3 +83,21 @@ test('rollPart: bars cover the last note start, at least one 16th long, max 16 b
   assert.equal(rollPart([n(0, 0.1, 60), n(40, 40.1, 62)], 120).bars, 1);   // 40 s is bar 21: past 16 bars, left out
   assert.throws(() => rollPart([n(40, 40.1, 62)], 120), /no notes in the first 16 bars/);
 });
+
+test('f1Score: an unsorted part is matched in time order, so it cannot under-count', () => {
+  const r = f1Score([{ pos: 0.5, note: 36 }, { pos: 1, note: 36 }], [{ pos: 1, note: 36 }, { pos: 0, note: 36 }]);
+  assert.equal(r.kept, 2);
+  assert.equal(r.f1, 1);
+});
+
+test('bestBassWindow: the window with the most notes kept beats a window with one stray note at F1 1', () => {
+  // window 0: one note, F1 1. window 32: a five-note phrase plus a chord partner the mono reader drops, F1 below 1 but 5 kept
+  const m = readSmf(stemNotes([
+    { step: 0, note: 40, sec: 0.1 },
+    { step: 32, note: 40, sec: 0.1 }, { step: 32, note: 52, sec: 0.1 }, { step: 34, note: 43, sec: 0.1 },
+    { step: 36, note: 45, sec: 0.1 }, { step: 38, note: 47, sec: 0.1 }, { step: 40, note: 48, sec: 0.1 },
+  ], 100));
+  const w = bestBassWindow(m.notes, T, 100);
+  assert.equal(w.offset, 32);
+  assert.equal(w.score.kept, 5);
+});

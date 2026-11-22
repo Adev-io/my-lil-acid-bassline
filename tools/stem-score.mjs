@@ -20,12 +20,12 @@ export function patternOnsets(p, offset = 0) {
   return out;
 }
 
-// F1 of part against stem. Each part note hits at most one stem note (stem notes taken in time order, first free match wins).
+// F1 of part against stem. Each part note hits at most one stem note (stem and part both taken in time order, first free match wins).
 export function f1Score(stem, part) {
-  const used = new Set();
+  const used = new Set(), sorted = [...part].sort((x, y) => x.pos - y.pos);
   let hits = 0;
   for (const a of [...stem].sort((x, y) => x.pos - y.pos)) {
-    const j = part.findIndex((b, i) => !used.has(i) && Math.abs(b.pos - a.pos) <= 0.5 && (b.note - a.note) % 12 === 0);
+    const j = sorted.findIndex((b, i) => !used.has(i) && Math.abs(b.pos - a.pos) <= 0.5 && (b.note - a.note) % 12 === 0);
     if (j >= 0) { used.add(j); hits++; }
   }
   const p = part.length ? hits / part.length : 0, r = stem.length ? hits / stem.length : 0;
@@ -33,7 +33,8 @@ export function f1Score(stem, part) {
 }
 
 // The bass as an Acid Bass pattern: every 32-step window (offset 0, 32, 64, ...) read by notesToPattern at the song's tempo,
-// each scored against the stem notes that snap into it; the best F1 wins, a tie goes to the earlier window.
+// each scored against the stem notes that snap into it. The window with the most stem notes kept wins, then the higher F1, then the
+// earlier one (F1 alone would let a window with one stray note, F1 1, beat a real phrase at F1 0.94).
 // Returns { offset, pattern, report, score }.
 export function bestBassWindow(notes, T, bpm, startSec = 0) {
   const on = stemOnsets(notes, bpm, startSec);
@@ -45,7 +46,7 @@ export function bestBassWindow(notes, T, bpm, startSec = 0) {
     catch (e) { if (String(e.message).startsWith('no notes')) continue; throw e; }   // an empty window
     const stem = on.filter((o) => Math.round(o.pos) >= offset && Math.round(o.pos) < offset + 32);
     const score = f1Score(stem, patternOnsets(r.pattern, offset));
-    if (!best || score.f1 > best.score.f1) best = { offset, pattern: r.pattern, report: r.report, score };
+    if (!best || score.kept > best.score.kept || (score.kept === best.score.kept && score.f1 > best.score.f1)) best = { offset, pattern: r.pattern, report: r.report, score };
   }
   if (!best) throw new Error('no 32-step window holds a note');
   return best;
