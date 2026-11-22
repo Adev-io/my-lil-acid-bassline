@@ -18,8 +18,8 @@ one section per run.
 ## Command
 
 ```
-bun tools/stem-test.mjs <crate> <section> [--load | --restore]
-bun tools/stem-test.mjs arrow-rapsong-crate 04_hook
+bun tools/stem-test-run.mjs <crate> <section> [--load | --restore]
+bun tools/stem-test-run.mjs arrow-rapsong-crate 04_hook
 ```
 
 - `<crate>`: a folder under `~/Desktop/uvr-loops/crates/`. `<section>`: the `NN_name` part of the file names, e.g. `04_hook` matches

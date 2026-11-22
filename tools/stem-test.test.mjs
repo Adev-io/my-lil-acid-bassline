@@ -9,8 +9,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stemNotes } from './fixtures.mjs';
 
-const cli = join(dirname(fileURLToPath(import.meta.url)), 'stem-test.mjs');
-const run = (uvr, ...args) => spawnSync(process.execPath, [cli, ...args], { env: { ...process.env, NODE_TEST_CONTEXT: '', STEM_TEST_UVR: uvr }, encoding: 'utf8' });
+const cli = join(dirname(fileURLToPath(import.meta.url)), 'stem-test-run.mjs');
+const run = (uvr, ...args) => spawnSync(process.execPath, [cli, ...args], { env: { ...process.env, STEM_TEST_UVR: uvr }, encoding: 'utf8' });
 
 function crate() {
   const uvr = mkdtempSync(join(tmpdir(), 'stem-test-'));

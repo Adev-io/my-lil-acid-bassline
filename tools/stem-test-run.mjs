@@ -1,7 +1,7 @@
-// tools/stem-test.mjs — one crate section's melodic stems, scored: notegrab each part (once; its .mid is reused), convert it for
+// tools/stem-test-run.mjs — one crate section's melodic stems, scored: notegrab each part (once; its .mid is reused), convert it for
 // Acid Bass (bass: best 32-step window) or My lil Roll (guitar, other), score the conversion against the stem's notes, and compare
 // with the section's baseline. --load puts the parts into the open Rack patch; --restore puts the patch back.
-//   bun tools/stem-test.mjs arrow-rapsong-crate 04_hook [--load | --restore]
+//   bun tools/stem-test-run.mjs arrow-rapsong-crate 04_hook [--load | --restore]
 // Spec: docs/superpowers/specs/2026-11-22-stem-test-design.md
 // Author: Ari Klopfer / A_Development · MIT
 import { spawnSync } from 'node:child_process';
@@ -96,5 +96,4 @@ async function main(argv) {
   return fails ? 1 : 0;
 }
 
-// node --test globs *-test.mjs, so it would run this CLI as a test file: stay quiet then (the tests spawn it with NODE_TEST_CONTEXT cleared)
-if (!process.env.NODE_TEST_CONTEXT) main(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (e) => { console.error(e.message); process.exitCode = 2; });
+main(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (e) => { console.error(e.message); process.exitCode = 2; });
