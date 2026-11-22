@@ -21,7 +21,35 @@ Spec: `docs/superpowers/specs/2026-11-22-my-lil-acid-house-design.md`
 | 16-step hook on Slider A | 8-step hook motif on Slider A, 8-step answer on Slider B | Slider A and B are 8 steps each; chaining them would use both |
 | Ride and shaker | Closed hat 16ths at low velocity as the shaker; open hat on offbeats; no ride | The Drums kit has kick, snare, chat, ohat, clap, rim, tom, crash only |
 | Swing 54 percent | Left out of the build; add by ear after s9 if wanted | Drums has no swing param; Clocked swing is not needed to prove the song |
-| Transit with 4 scenes | Scenes are a `scene()` function (script sets patterns, mutes, sends). Transit capture by mouse is an optional step 9b by Ari | Transit maps params with the mouse; the MCP cannot map |
+| Transit with 4 scenes | Two Transits scripted over the MCP (see "As built"), plus a `scene()` function | Transit's mappings and slot values are plain saved state, so no mouse mapping is needed |
+
+## As built (2026-11-22): what changed after the tasks below were written
+
+The tasks below are the first design. The build, run live with Ari listening after every step, changed them like this. `build.mjs` is the source of truth; the saved patches are `my-lil-acid-house-s1-clock` ... `s9-transit-levels`.
+
+| Step | Tasks below said | Built |
+|---|---|---|
+| layout | not mentioned | `vcvrack_set_layout_preferences` to 260 HP x 8 rows before adding modules; the default box refused the 21st module |
+| s1 | Clocked params by guessed names | Exact names: `Master clock` (a regex on bpm hit `Bpm mode prev`), `Clk 1 ratio` is numeric (value 5 shows "4"), Run is a toggle |
+| s3 | Acid slot per scene | Acid sits at A2 and above, over a new sub bass (Roll #0 + Triple #0, strip 6, roots A F C G, D E F G) |
+| s4 | 4-bar chords, one pattern | 8-bar progression Am9 Fmaj7#11 Cmaj9 G6/9 / Dm9 Em11 Fmaj9 G6/9, rootless voicings; chords muted in the groove (Ari: the stab is a distraction); ambient pads (Roll #2) and a sine arp with a dotted-8th delay (Roll #3) added |
+| s5 | Slider A hook through Harmony | Hook is an 8-bar composed melody on a Roll (Roll #4) through Harmony (solo, glide 0) into Triple #4; velocity shapes each phrase and opens the filter (VCA-1 into Cutoff CV, filter envelope bloom). Slider A is not used |
+| s6 | Slider B into Arpeggio into AcidVoice | A second AcidBass (answer acid), an octave up, playing only in the lead's rests; Mutate from Ripple B |
+| s7 | Ripple ENV into the stab Filter | Ripple generator B (period 6) ducks the pads and C (period 10) ducks the arp through two My lil Duck modules in trigger mode; Ripple A mutates the lead acid; the chord Roll's end-of-loop undoes the mutations. The first try (3 and 5) was too busy. R' is "every tick R did not fire", so it was not used |
+| s8 | Reverb on send 2 | AS ReverbStereoFx, then a third Duck keyed by the kick audio, into Return 2. Send knobs are not linear: 0.2 to 0.5 left the tail at -37 dB RMS; 0.6 to 1.0 gives about -23 |
+| s9 | `scene()` only | Two Transits (instant for patterns and Harmony snap; morph, about one bar, for mutes, cutoffs, sends and master level) written over the MCP, plus `scene()` which presses both slot buttons. Intro and break use a lower master level |
+| watchdog | Roll, Harmony, Arpeggio | `bun build.mjs key` also checks the stored slots and Transpose of every AcidBass |
+
+Facts found while building, worth keeping:
+
+- **Roll** velocity is 0..1 (a value of 105 made every note line skip). Pattern param is 1-based; Drums and AcidBass Pattern are 0-based.
+- **Harmony** Glide above 0 plays the semitones in between, out of key. Keep it 0.
+- **Fundamental LFO** frequency knob behaves as radians (about 2 pi slower than the label); raw -7.7 gives a 30 s cycle. **Delay** time is overridden by a patched Clock input, so leave the clock unpatched and set the time to 0.365 s (dotted 8th at 124 bpm).
+- **Rack MCP** `get_voltages` only reports ports with channels, so an unpatched output reads empty. Ripple's 1 ms triggers are missed by polling; prove a duck by comparing RMS before and after it.
+- **Transit** 2.5.0 loads slot values with `json_real_value`, which returns 0 for a JSON integer: send whole numbers as v + 1e-4 and give each slot a real `fadeTime`. Clear `sourceMaps`, wait 2 s, then write the maps and presets. A recall crossfades every non-switch param, hence two Transits. Fade seconds = 0.01 * 2^(10 * fade).
+- `ah.mjs` gained `ensure()` (rerunnable steps), an idempotent `cable()`, `setByDisplay()` and `setDb()`.
+
+Not built: Slider A and B (one Slider module is still in the patch, unpatched), Arpeggio, AcidVoice, the stab Filter, the Ripple envelope as a cutoff source. The slow LFO (30 s cycle, through a VCA-1 scaler) rides the lead acid's cutoff instead of an AcidVoice. Tasks 5 to 9 below are therefore historical.
 
 ## File structure
 
