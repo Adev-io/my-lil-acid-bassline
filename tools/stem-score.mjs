@@ -50,3 +50,25 @@ export function bestBassWindow(notes, T, bpm, startSec = 0) {
   if (!best) throw new Error('no 32-step window holds a note');
   return best;
 }
+
+const ROLL_16TH = 24, ROLL_BAR = 384, ROLL_MAX_BARS = 16;   // My lil Roll: 96 PPQ, 4/4, up to 16 bars
+
+// A chord part as My lil Roll text: every note snapped to a 16th at bpm, at least a 16th long, one per start + pitch (Roll keeps
+// one), velocity 0-1, the first 16 bars only. Returns { text, bars, score, meanSnap } (score: F1 against the stem's notes in those
+// bars; meanSnap: their mean distance to the 16th grid, in steps).
+export function rollPart(notes, bpm, startSec = 0) {
+  const tick = (sec) => Math.round((sec - startSec) * bpm / 15) * ROLL_16TH;
+  const rows = [], seen = new Set();
+  for (const n of notes) {
+    const s = tick(n.startSec);
+    if (s < 0 || s >= ROLL_MAX_BARS * ROLL_BAR || seen.has(s + ':' + n.note)) continue;
+    seen.add(s + ':' + n.note);
+    rows.push([s, Math.max(ROLL_16TH, tick(n.endSec) - s), n.note, Math.round(n.vel / 127 * 100) / 100]);
+  }
+  if (!rows.length) throw new Error('no notes in the first 16 bars');
+  const bars = Math.floor(Math.max(...rows.map((r) => r[0])) / ROLL_BAR) + 1;
+  const stem = stemOnsets(notes, bpm, startSec).filter((o) => Math.round(o.pos) >= 0 && Math.round(o.pos) < bars * 16);
+  const score = f1Score(stem, rows.map(([s, , note]) => ({ pos: s / ROLL_16TH, note })));
+  const meanSnap = stem.reduce((a, o) => a + Math.abs(o.pos - Math.round(o.pos)), 0) / stem.length;
+  return { text: 'bars=' + bars + '\n' + rows.map((r) => r.join(' ')).join('\n') + '\n', bars, score, meanSnap };
+}

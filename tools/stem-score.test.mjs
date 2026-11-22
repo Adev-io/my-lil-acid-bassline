@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { loadCore } from './load.mjs';
 import { readSmf } from './smf.mjs';
 import { stemNotes } from './fixtures.mjs';
-import { bestBassWindow, f1Score, patternOnsets, stemOnsets } from './stem-score.mjs';
+import { bestBassWindow, f1Score, patternOnsets, rollPart, stemOnsets } from './stem-score.mjs';
 
 const { T } = loadCore();
 
@@ -64,4 +64,22 @@ test('bestBassWindow: the window with the better score wins, a tie goes to the e
   assert.equal(bestBassWindow(m.notes, T, 100).offset, 32);
   const same = readSmf(stemNotes([{ step: 0, note: 40, sec: 0.1 }, { step: 32, note: 40, sec: 0.1 }], 100));
   assert.equal(bestBassWindow(same.notes, T, 100).offset, 0);
+});
+
+test('rollPart: notes snapped to 16ths at 96 PPQ, one per start + pitch, velocity 0-1, scored against the stem', () => {
+  const n = (startSec, endSec, note, vel) => ({ startSec, endSec, note, vel });
+  // 120 bpm: a 16th is 0.125 s and 24 ticks. 0.01 s -> tick 0; 0.2 s -> tick 48; the third note is a duplicate of the first
+  const r = rollPart([n(0.01, 0.2, 60, 127), n(0.02, 0.2, 64, 64), n(0, 0.1, 60, 90)], 120);
+  assert.equal(r.text, 'bars=1\n0 48 60 1\n0 48 64 0.5\n');
+  assert.equal(r.bars, 1);
+  assert.deepEqual({ kept: r.score.kept, dropped: r.score.dropped, extra: r.score.extra }, { kept: 2, dropped: 1, extra: 0 });
+  assert.ok(Math.abs(r.meanSnap - 0.08) < 1e-9, 'meanSnap ' + r.meanSnap);   // (0.08 + 0.16 + 0) / 3 steps
+});
+
+test('rollPart: bars cover the last note start, at least one 16th long, max 16 bars', () => {
+  const n = (startSec, endSec, note) => ({ startSec, endSec, note, vel: 127 });
+  const r = rollPart([n(0, 0.01, 60), n(2.0, 2.01, 62)], 120);   // 2.0 s at 120 bpm = bar 2, tick 384
+  assert.equal(r.text, 'bars=2\n0 24 60 1\n384 24 62 1\n');
+  assert.equal(rollPart([n(0, 0.1, 60), n(40, 40.1, 62)], 120).bars, 1);   // 40 s is bar 21: past 16 bars, left out
+  assert.throws(() => rollPart([n(40, 40.1, 62)], 120), /no notes in the first 16 bars/);
 });
