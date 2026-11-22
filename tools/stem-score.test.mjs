@@ -3,7 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadCore } from './load.mjs';
-import { f1Score, patternOnsets, stemOnsets } from './stem-score.mjs';
+import { readSmf } from './smf.mjs';
+import { stemNotes } from './fixtures.mjs';
+import { bestBassWindow, f1Score, patternOnsets, stemOnsets } from './stem-score.mjs';
 
 const { T } = loadCore();
 
@@ -35,4 +37,31 @@ test('patternOnsets: note steps at offset + step; ties and same-pitch slides wri
   p.steps[3] = { gate: 'tie', note: 0, oct: 0, accent: false, slide: false };
   p.steps[5] = { gate: 'note', note: 12, oct: 1, accent: true, slide: false };
   assert.deepEqual(patternOnsets(p, 32), [{ pos: 32, note: 36 }, { pos: 34, note: 28 }, { pos: 37, note: 60 }]);
+});
+
+test('bestBassWindow: a pattern the app wrote, read back at its own tempo, scores 1 (spec check 1)', () => {
+  const m = readSmf(T.patternsToMidi([T.parsePattern('C - E - G - A - C - E - G - A -')], 120, 'x'));
+  const w = bestBassWindow(m.notes, T, 120);
+  assert.equal(w.offset, 0);
+  assert.equal(w.score.f1, 1);
+  assert.equal(w.score.kept, 8);
+});
+
+test('bestBassWindow: a phrase at step 32 of an otherwise empty stem is found at offset 32 (spec check 3)', () => {
+  const m = readSmf(stemNotes([{ step: 32, note: 40, sec: 0.1 }, { step: 36, note: 43, sec: 0.1 }, { step: 40, note: 45, sec: 0.1 }], 89));
+  const w = bestBassWindow(m.notes, T, 89);
+  assert.equal(w.offset, 32);
+  assert.equal(w.score.f1, 1);
+  assert.equal(w.pattern.steps[0].gate, 'note');
+});
+
+test('bestBassWindow: the window with the better score wins, a tie goes to the earlier window', () => {
+  // window 0: two notes on one step (the reader keeps the lowest, F1 2/3); window 32: two clean notes (F1 1)
+  const m = readSmf(stemNotes([
+    { step: 0, note: 40, sec: 0.1 }, { step: 0, note: 47, sec: 0.1 },
+    { step: 32, note: 40, sec: 0.1 }, { step: 34, note: 43, sec: 0.1 },
+  ], 100));
+  assert.equal(bestBassWindow(m.notes, T, 100).offset, 32);
+  const same = readSmf(stemNotes([{ step: 0, note: 40, sec: 0.1 }, { step: 32, note: 40, sec: 0.1 }], 100));
+  assert.equal(bestBassWindow(same.notes, T, 100).offset, 0);
 });
