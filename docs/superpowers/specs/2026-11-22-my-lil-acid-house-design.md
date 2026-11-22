@@ -63,8 +63,10 @@ Swing is left to the ear after s9.
 
 ## Movement
 
-- Ripple: A (period 16) mutates the lead acid, B (period 6, a dotted quarter) mutates the answer acid and ducks the pads, C (period 10) ducks the
-  arp. The two ducks interlock about every 3.6 s. Ripple's R' is every tick R did not fire, so it is not used.
+- Ripple: A (period 16) mutates the lead acid, B (period 4) ducks the pads and C (period 8) ducks the arp, so both pump on the beat with the kick.
+  The first try (6 and 10 sixteenths, interlocking against the kick) was too busy and then not danceable. The answer acid does not mutate, so it loops
+  steady. Ripple's R' is every tick R did not fire, so it is not used.
+- Swing 0.12 on Clocked's Clock 1 (measured about 56 percent) swings the drums, both acids and every Roll together.
 - A slow LFO (30 s cycle) rides the lead acid's cutoff.
 - The kick sidechain pumps the whole mix; the reverb return has its own kick-keyed Duck, so the tail breathes with the kick.
 - Each scene changes the Acid Bass slots, so the riff evolves.
@@ -72,7 +74,7 @@ Swing is left to the ear after s9.
 | Scene | Drums | Acid | Answer | Chords | Hook | Pads / arp | Reverb | Master |
 |---|---|---|---|---|---|---|---|---|
 | Intro | pattern 1 (kick, hats) | slot 1, filter low | off | off | off | pads on, arp off | pads | -4 dB |
-| Groove | pattern 2 (+ clap, shaker) | slot 2 | on | off (the stab distracts) | on | on | pads and hook | 0 |
+| Groove | pattern 2 (+ clap, open hat on the offbeat, ghost hats) | slot 2 | on | off (the stab distracts) | on | on | pads and hook | 0 |
 | Break | pattern 3 (no kick) | slot 4, long slides | off | pad | on, big reverb send | pads on, arp off | up | -5 dB |
 | Drop | pattern 4 (full + open hat) | slot 3, filter open | on, brighter | 3-3-2 stab | chord tones, more delay | on, syncopated arp | less | 0 |
 
