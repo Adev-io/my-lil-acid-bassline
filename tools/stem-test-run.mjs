@@ -29,14 +29,15 @@ function notegrab(wav, mid) {
   if (r.status !== 0 || !existsSync(mid)) throw new Error('notegrab failed on ' + wav + '\n' + String(r.stderr || r.error || '').slice(-800));
 }
 
+const round6 = (x) => Math.round(x * 1e6) / 1e6;
 const pct = (x) => Math.round(x * 100) + '%';
 // the ear verdicts already typed into results.md, by part (column 10 of the table)
 function earOf(path) {
   const ear = {};
   if (!existsSync(path)) return ear;
   for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
-    const c = line.split('|').map((x) => x.trim());
-    if (c.length === 12 && TARGET[c[1]] && c[10]) ear[c[1]] = c[10];
+    const raw = line.split('|'), c = raw.map((x) => x.trim());
+    if (c.length >= 12 && TARGET[c[1]]) { const v = raw.slice(10, -1).join('|').trim(); if (v) ear[c[1]] = v; }   // a verdict may hold a pipe
   }
   return ear;
 }
@@ -57,24 +58,31 @@ async function main(argv) {
   if (!existsSync(dir)) throw new Error('no crate folder ' + dir);
   const files = readdirSync(dir), esc = section.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const { T } = loadCore();
-  const rows = [];
-  for (const [prefix, part] of PARTS) {
+  const found = PARTS.map(([prefix, part]) => {
     const re = new RegExp('^' + prefix + '-' + esc + '-(\\d+(?:\\.\\d+)?)bpm\\.wav$', 'i');
-    const f = files.find((x) => re.test(x));
+    const fs = files.filter((x) => re.test(x));
+    if (fs.length > 1) throw new Error('more than one ' + part + ' stem for ' + section + ': ' + fs.join(', '));
+    return { part, re, f: fs[0] };
+  });
+  const rows = [];
+  for (const { part, re, f } of found) {
     if (!f) { console.error('no ' + part + ' stem for ' + section + ': skipped'); continue; }
-    const bpm = Number(re.exec(f)[1]), stem = f.replace(/\.wav$/i, ''), mid = join(UVR, 'notegrab', stem, stem + '.mid');
-    notegrab(join(dir, f), mid);
-    const notes = readSmf(readFileSync(mid)).notes.filter((n) => n.channel !== 9);   // channel 10 is drums
-    mkdirSync(out, { recursive: true });
-    if (part === 'bass') {
-      const w = bestBassWindow(notes, T, bpm);
-      writeFileSync(join(out, 'bass-acid.json'), JSON.stringify(w.pattern));
-      rows.push({ part, target: TARGET[part], window: w.offset, ...w.score, offGrid: w.report.meanSnap });
-    } else {
-      const r = rollPart(notes, bpm);
-      writeFileSync(join(out, part + '-roll.txt'), r.text);
-      rows.push({ part, target: TARGET[part], window: null, ...r.score, offGrid: r.meanSnap });
-    }
+    try {
+      const bpm = Number(re.exec(f)[1]), stem = f.replace(/\.wav$/i, ''), mid = join(UVR, 'notegrab', stem, stem + '.mid');
+      notegrab(join(dir, f), mid);
+      const notes = readSmf(readFileSync(mid)).notes.filter((n) => n.channel !== 9);   // channel 10 is drums
+      if (part === 'bass') {
+        const w = bestBassWindow(notes, T, bpm);
+        mkdirSync(out, { recursive: true });
+        writeFileSync(join(out, 'bass-acid.json'), JSON.stringify(w.pattern));
+        rows.push({ part, target: TARGET[part], window: w.offset, ...w.score, offGrid: w.report.meanSnap });
+      } else {
+        const r = rollPart(notes, bpm);
+        mkdirSync(out, { recursive: true });
+        writeFileSync(join(out, part + '-roll.txt'), r.text);
+        rows.push({ part, target: TARGET[part], window: null, ...r.score, offGrid: r.meanSnap });
+      }
+    } catch (e) { console.error(part + ': ' + e.message + ', skipped'); }
   }
   if (!rows.length) throw new Error('no bass, guitar or other stem for section ' + section + ' in ' + dir);
 
@@ -85,10 +93,11 @@ async function main(argv) {
   let fails = 0;
   for (const r of rows) {
     const b = base && base.rows.find((x) => x.part === r.part);
-    r.change = b ? r.f1 - b.f1 : null;
-    r.fail = b ? b.f1 - r.f1 > DROP : false;
+    r.change = b ? round6(r.f1 - b.f1) : null;   // rounded so a drop of exactly 0.05 passes
+    r.fail = b ? round6(b.f1 - r.f1) > DROP : false;
     if (r.fail) fails++;
   }
+  for (const b of base ? base.rows : []) if (!rows.some((r) => r.part === b.part)) { console.error(b.part + ': in the baseline but not in this run'); fails++; }
   const md = join(out, 'results.md'), text = table(res, earOf(md));
   writeFileSync(md, text);
   console.log(text + '\n' + out);

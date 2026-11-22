@@ -61,3 +61,73 @@ test('stem-test: bad arguments and a section with no stems stop with exit 2 and 
   assert.match(r.stderr, /no bass, guitar or other stem for section 09_verse/);
   assert.ok(!existsSync(out));
 });
+
+test('stem-test: an ear verdict that contains a pipe survives a rerun', () => {
+  const { uvr, out } = crate();
+  run(uvr, 'c', '04_hook');
+  const md = join(out, 'results.md');
+  writeFileSync(md, readFileSync(md, 'utf8').replace(/\| baseline \|  \|/, '| baseline | keep | close |'));
+  const r = run(uvr, 'c', '04_hook');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(md, 'utf8'), /\| \+0\.00 \| keep \| close \|/);
+});
+
+test('stem-test: a part that throws is skipped, the other parts are still written', () => {
+  const { uvr, out } = crate();
+  writeFileSync(join(uvr, 'crates', 'c', '3-guitar-04_hook-120bpm.wav'), '');
+  const stem = '3-guitar-04_hook-120bpm';
+  mkdirSync(join(uvr, 'notegrab', stem), { recursive: true });
+  writeFileSync(join(uvr, 'notegrab', stem, stem + '.mid'), stemNotes([{ step: 300, note: 60, sec: 0.1 }], 120));   // 37.5 s: past bar 16
+  const r = run(uvr, 'c', '04_hook');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stderr, /guitar: no notes in the first 16 bars, skipped/);
+  const md = readFileSync(join(out, 'results.md'), 'utf8');
+  assert.match(md, /\| bass \|/);
+  assert.doesNotMatch(md, /\| guitar \|/);
+});
+
+test('stem-test: every part throwing stops with exit 2', () => {
+  const { uvr } = crate();
+  const stem = '2-bass-04_hook-120bpm';
+  writeFileSync(join(uvr, 'notegrab', stem, stem + '.mid'), stemNotes([], 120));   // an empty .mid: no window holds a note
+  const r = run(uvr, 'c', '04_hook');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /bass: .*, skipped/);
+  assert.match(r.stderr, /no bass, guitar or other stem for section 04_hook/);
+});
+
+test('stem-test: a part in the baseline but not in this run fails the run', () => {
+  const { uvr, out } = crate();
+  run(uvr, 'c', '04_hook');
+  const base = join(out, 'baseline.json'), b = JSON.parse(readFileSync(base, 'utf8'));
+  b.rows.push({ ...b.rows[0], part: 'guitar' });
+  writeFileSync(base, JSON.stringify(b));
+  const r = run(uvr, 'c', '04_hook');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /guitar: in the baseline but not in this run/);
+});
+
+test('stem-test: a drop of exactly 0.05 passes, 0.06 fails', () => {
+  const { uvr, out } = crate();
+  run(uvr, 'c', '04_hook');
+  const base = join(out, 'baseline.json'), b = JSON.parse(readFileSync(base, 'utf8'));
+  b.rows[0].f1 = 1.05;
+  writeFileSync(base, JSON.stringify(b));
+  let r = run(uvr, 'c', '04_hook');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(readFileSync(join(out, 'results.md'), 'utf8'), /\| -0\.05 \| /);
+  b.rows[0].f1 = 1.06;
+  writeFileSync(base, JSON.stringify(b));
+  r = run(uvr, 'c', '04_hook');
+  assert.equal(r.status, 1);
+  assert.match(readFileSync(join(out, 'results.md'), 'utf8'), /-0\.06 FAIL \|/);
+});
+
+test('stem-test: two stems for one part stop the run before anything is written', () => {
+  const { uvr, out } = crate();
+  writeFileSync(join(uvr, 'crates', 'c', '2-bass-04_hook-121bpm.wav'), '');
+  const r = run(uvr, 'c', '04_hook');
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /more than one bass stem for 04_hook: 2-bass-04_hook-120bpm\.wav, 2-bass-04_hook-121bpm\.wav/);
+  assert.ok(!existsSync(out));
+});
