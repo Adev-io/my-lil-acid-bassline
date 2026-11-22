@@ -80,7 +80,7 @@ test('load: one backup in the root survives a second section; restore returns th
   assert.ok(readdirSync(r).some((f) => f.startsWith('before.restored-')) && !readdirSync(r).includes('before.json'));
 });
 
-test('restore: only slots 4, 14 and 15 go back; edits elsewhere and Roll\'s key stay', async () => {
+test('restore: only Acid Bass slot I-A5 and Roll patterns 15 and 16 go back; edits elsewhere and Roll\'s key stay', async () => {
   reset();
   const r = root(), d = section(r, 'c-04', { 'bass-acid.json': '{"n":"x"}', 'other-roll.txt': 'X', 'guitar-roll.txt': 'G' });
   await loadIntoRack(d, new Set(['bass', 'other', 'guitar']), r);
