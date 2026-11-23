@@ -1,6 +1,6 @@
 # My lil acid house rack: a melodic Chicago-acid patch built from the My lil modules
 
-Author: Ari Klopfer / A_Development · 2026-11-22 · status: built through s9 (scenes), updated to match the patch; see the plan's "As built"
+Author: Ari Klopfer / A_Development · 2026-11-22 · status: built through s9 (scenes), updated to match the patch; see the plan's "As built". The tonality, chords and scenes were replaced by `2026-11-22-my-lil-acid-house-dorian-transits-design.md` (A Dorian, two manual Transits)
 
 ## Why
 
