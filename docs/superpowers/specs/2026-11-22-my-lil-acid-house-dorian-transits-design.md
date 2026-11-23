@@ -1,6 +1,6 @@
 # My lil acid house, A Dorian rebuild and the two Transits
 
-Author: Ari Klopfer / A_Development · 2026-11-22 · status: built through d8 and heard end to end; last save `my-lil-acid-house-d8-levels.vcv`
+Author: Ari Klopfer / A_Development · 2026-11-22 · status: built through d9 and heard end to end; last save `my-lil-acid-house-d9-no-arp.vcv`
 
 Supersedes the tonality, chord and scene parts of `2026-11-22-my-lil-acid-house-design.md` (A natural minor, 10 auto-advancing sections). The signal path, drums, mix and ducking in that spec stay.
 
@@ -37,13 +37,13 @@ Both are recalled by the same slot button (1-6), by hand or by `dorian.mjs`. The
 | # | Scene | Bars (song) | Drums | Lead acid | Chords / sub | On (besides drums) | Hook | Arp | Master | Fade knob |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 | intro | 8 | intro | sparse | none / held, P1 | lead, sub, pads | off | off | -7 dB | 0.8 |
-| 2 | groove | 16 | groove | groove | none / offbeat, P1 | lead, sub, hook, pads, arp | 8-bar melody | offbeat pluck | -5 dB | 0.85 |
+| 2 | groove | 16 | groove | groove | none / offbeat, P1 | lead, sub, hook, pads | 8-bar melody | off | -5 dB | 0.85 |
 | 3 | break | 8 | no kick | slides | pad / held, P-break | lead, chords, sub, hook | held notes E5 F#5 E5 C5 | off | -8 dB | 0.85 |
-| 4 | build | 6 | snare roll | rising run | pad / held, P1 | lead, chords, sub, hook, arp | 8-bar melody | 8th pulse | -6 dB | 0.999 (5.3 bars) |
+| 4 | build | 6 | snare roll | rising run | pad / held, P1 | lead, chords, sub, hook | 8-bar melody | off | -6 dB | 0.999 (5.3 bars) |
 | 5 | drop | 16 | drop | busy | 3-3-2 stab / offbeat plus pickup, P-drop | lead, answer acid, chords, sub, hook | held notes A5 F#5 G5 A5 | off | -4 dB | 0.7 |
 | 6 | outro | 8 | intro | sparse | none / held, P1 | lead (filter closing), sub, pads | off | off | -6 dB | 0.999 (5.3 bars) |
 
-Pads and arp keep one pattern on P1, so pads are muted in break and drop, where the progression differs; the arp plays only in groove and build.
+Pads keep one pattern on P1, so they are muted in break and drop, where the progression differs. The Triple arp is muted in every scene: Ari did not like it, first as the 16th run, then as the pluck and the pulse. Its Roll patterns stay stored and selectable on S.
 
 Break reverb: the lead acid send 0.2 (the slides ring out), chord send 0.85, decay 0.78. Elsewhere the lead send is 0 to 0.1 and the chord send 0.8.
 
@@ -51,11 +51,11 @@ Break reverb: the lead acid send 0.2 (the slides ring out), chord send 0.85, dec
 
 - **Lead acid** (slot 0 intro and outro, 1 groove, 2 drop, 3 break, 4 build): a slide flag glides into the next step. The kick owns steps 1, 5, 9, 13 and the sub plays the offbeat 8ths in the groove, so the lead plays the 16th gaps, leaves rests, puts accents off the beat, glides down into the 2nd and the F#, and ends bar 2 on a pickup into bar 1. Answer acid slot 2: held accents over the busy lead.
 - **Hook** (Roll #4 through Harmony): pattern 1 is the 8-bar composed melody (groove, build). Patterns 2 and 3 are one held chord tone per two bars on the break and drop progressions. The melody sounded like an arp when it ran in break and drop.
-- **Arp** (Roll #3): the 16th sine run was cut. Pattern 1 is a sparse offbeat pluck (chord tones an octave up on steps 4, 7, 11, 16, short, through the dotted-8th delay), pattern 2 a steady 8th pulse for the build.
+- **Arp** (Roll #3, Triple, strip 8): out of the song. The 16th sine run was cut, then the replacements (pattern 1 an offbeat pluck on steps 4, 7, 11, 16; pattern 2 a steady 8th pulse for the build) were cut too. Strip 8 is muted in all six scenes. Open: a top line for the groove (the answer acid an octave up at low level) and a build riser from the filter and snare roll.
 
 ## Levels measured (last full check, master RMS and peak in dBFS)
 
-intro -10.5 / -4.4, groove -8.5 / -2.5, break -10.1 / -3.8, build -9.6 / -2.5, drop -7.5 / -2.1, outro -9.5 / -3.4. The drop is the loudest scene and every peak is under -1 dBFS. Runs differ by about 1 dB. Master level per scene is an absolute dB (gain = 2 * raw^2, so raw 0.707 = 0 dB), not "relative to the current level".
+intro -11.4 / -4.1, groove -9.5 / -2.4, break -10.5 / -3.7, build -9.4 / -2.4, drop -7.6 / -2.1, outro -9.5 / -3.6 (check run, arp muted). A full `song` run read the break at -12.2 and the drop 1 dB above the groove. The drop is the loudest scene and every peak is under -1 dBFS. Runs differ by 1 to 2 dB. Master level per scene is an absolute dB (gain = 2 * raw^2, so raw 0.707 = 0 dB), not "relative to the current level".
 
 ## Wiring and traps
 
